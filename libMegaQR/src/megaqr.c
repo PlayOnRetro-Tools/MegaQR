@@ -38,10 +38,10 @@ static void renderQRCode(const u8 code[], const u16 size, const u16 index, const
         for (u16 j = 0; j < size; j += 2)
         {
             // Get a 2x2 bit block from the code
-            const u32 a = !QRCode_GetModule(code, j, i);
-            const u32 b = !QRCode_GetModule(code, j + 1, i);
-            const u32 c = !QRCode_GetModule(code, j, i + 1);
-            const u32 d = !QRCode_GetModule(code, j + 1, i + 1);
+            const u8 a = !QRCode_GetModule(code, j, i);
+            const u8 b = !QRCode_GetModule(code, j + 1, i);
+            const u8 c = !QRCode_GetModule(code, j, i + 1);
+            const u8 d = !QRCode_GetModule(code, j + 1, i + 1);
 
             // Map block to 8x8 tile
             const u8  nibble = (a << 3) | (b << 2) | (c << 1) | d;
