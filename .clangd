@@ -1,0 +1,24 @@
+CompileFlags:
+  Remove:
+    - -m68000
+    - -m68*
+  Add:
+    - -std=c23
+    - -Wno-unknown-warning-option
+    - -Wno-unused-command-line-argument
+    - -Wno-main
+    - -ffreestanding
+
+Diagnostics:
+  UnusedIncludes: None
+  Suppress:
+    - unused-includes
+    - main-return-type
+
+Hover:
+  ShowAKA: Yes
+
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
