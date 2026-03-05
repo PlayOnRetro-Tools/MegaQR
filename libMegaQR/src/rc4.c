@@ -1,6 +1,6 @@
 #include "rc4.h"
 
-void rc4_init(rc4_ctx *ctx, const u8 *key, u32 keylen)
+void rc4_init(rc4_ctx * const ctx, const u8 *key, u32 keylen)
 {
     u16 j = 0;
     for (u16 i = 0; i < 256; i++) ctx->s[i] = i;
@@ -14,7 +14,7 @@ void rc4_init(rc4_ctx *ctx, const u8 *key, u32 keylen)
     ctx->i = ctx->j = 0;
 }
 
-void rc4_crypt(rc4_ctx *ctx, u8 *data, u32 len)
+void rc4_crypt(rc4_ctx * const ctx, u8 * const data, const u32 len)
 {
     for (u32 k = 0; k < len; k++)
     {

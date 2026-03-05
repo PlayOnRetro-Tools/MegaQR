@@ -5,11 +5,11 @@ This library enables QR code generation on Sega Mega Drive for leaderboard submi
 ## Features
 
 - Generates QR codes from `ScoreEntry` structs with score, achievements, device type, and game ID.
-- Renders QR codes directly to VDP plane A using black/white tiles from palette 0.
+- Renders QR codes directly to VDP plane A.
 
 ## Requirements
 
-- SGDK (Sega Genesis Development Kit) for compilation and VDP access.
+- SGDK (Sega Genesis Development Kit) for compilation.
 - Include headers: `megaqr.h`.
 - Game ID from PlayOnRetro leaderboard service.
 
@@ -32,15 +32,15 @@ Defines leaderboard entry data for QR encoding.
 
 1. Define your game ID and achievements as bitflags.
 2. Populate an `ScoreEntry` struct.
-3. Set up VDP with a palette at index 0.
-4. Invoke `qr_generate(&entry, tilex, tiley, vram_index)` to serialize, encode, generate, and draw QR to plane A.
-5. Enter VBlank loop to display.
+3. Invoke `qr_generate(&entry, tilex, tiley, vram_index, pal_index)` to serialize, encode, generate, and draw QR to plane A.
+4. Enter VBlank loop to display.
 
 ## Example
 
 From `main.c` sample:
 
 ```c
+
 #include <megaqr.h>
 
 // Define a maximum of 32 achievements as a bitflag
@@ -51,26 +51,24 @@ From `main.c` sample:
 #define ACHIEVEMENT_END_GAME       bit(2)
 #define ACHIEVEMENT_NO_MISS        bit(31)
 
-#define QR_SCREEN_TILE_X 10
+#define QR_SCREEN_TILE_X 11
 #define QR_SCREEN_TILE_Y 4
 
 // Customize the screen for the QR code.
 //
-// The QR code gets rendered into the plane A using indexes 0 and 15 of the PAL0.
-// Colors are expected to be black and white for compatilibity with scanning devices.
-//
-// This sample uses SGDKs default palette for simplicity.
+// The QR code gets rendered into the plane A (128x128 pixels) with its own palette.
 //
 static void prepareScreen(void)
 {
     SYS_disableInts();
-
     SPR_reset();
     VDP_clearPlane(BG_A, 0);
     VDP_clearPlane(BG_B, 0);
-    VDP_drawText("GENERATING QR CODE", 11, 1);
-
+    VDP_setVerticalScroll(BG_A, 0);
+    VDP_setVerticalScroll(BG_B, 0);
+    VDP_setPlaneSize(64, 32, TRUE);
     SYS_enableInts();
+
     SYS_doVBlankProcess();
 }
 
@@ -90,7 +88,7 @@ int main(bool hard_reset)
     prepareScreen();
 
     // QR rendering needs to upload 16 tiles at the indicated vram index
-    qr_generate(&entry, QR_SCREEN_TILE_X, QR_SCREEN_TILE_Y, TILE_USER_INDEX);
+    qr_generate(&entry, QR_SCREEN_TILE_X, QR_SCREEN_TILE_Y, TILE_USER_INDEX, PAL1);
 
     while (TRUE)
     {
@@ -102,4 +100,4 @@ int main(bool hard_reset)
 
 ## Integration Notes
 
-- Build with SGDK: Add header and library to your Makefile.
+- Build with SGDK: Add header and compiled library to your Makefile or add source files to your project.

@@ -35,5 +35,6 @@ typedef struct
  * @param[in] tilex Screen x position for rendering in tile coordinates.
  * @param[in] tiley Screen y position for rendering in tile coordinates.
  * @param[in] index VRAM index for qr tile data (16 tiles needed).
+ * @param[in] pal Palette index to use. The QR code uploads its own palette.
  */
-void qr_generate(ScoreEntry const *const entry, const u16 tilex, const u16 tiley, const u16 index);
+void qr_generate(ScoreEntry const *const entry, const u16 tilex, const u16 tiley, const u16 index, const u8 pal);

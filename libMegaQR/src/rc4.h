@@ -10,5 +10,5 @@ typedef struct
     u8 i, j;
 } rc4_ctx;
 
-void rc4_init(rc4_ctx *ctx, const u8 *key, const u32 keylen);
-void rc4_crypt(rc4_ctx *ctx, u8 *data, const u32 len);
+void rc4_init(rc4_ctx *const ctx, const u8 *key, const u32 keylen);
+void rc4_crypt(rc4_ctx *const ctx, u8 *const data, const u32 len);

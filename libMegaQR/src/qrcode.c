@@ -1,285 +1,680 @@
-/**
- * The MIT License (MIT)
+/*
+ * QR Code generator library (C)
  *
- * This library is written and maintained by Richard Moore.
- * Major parts were derived from Project Nayuki's library.
+ * Copyright (c) Project Nayuki. (MIT License)
+ * https://www.nayuki.io/page/qr-code-generator-library
  *
- * Copyright (c) 2017 Richard Moore     (https://github.com/ricmoo/QRCode)
- * Copyright (c) 2017 Project Nayuki    (https://www.nayuki.io/page/qr-code-generator-library)
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
-
-/**
- *  Special thanks to Nayuki (https://www.nayuki.io/) from which this library was
- *  heavily inspired and compared against.
- *
- *  See: https://github.com/nayuki/QR-Code-generator/tree/master/cpp
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ * - The above copyright notice and this permission notice shall be included in
+ *   all copies or substantial portions of the Software.
+ * - The Software is provided "as is", without warranty of any kind, express or
+ *   implied, including but not limited to the warranties of merchantability,
+ *   fitness for a particular purpose and noninfringement. In no event shall the
+ *   authors or copyright holders be liable for any claim, damages or other
+ *   liability, whether in an action of contract, tort or otherwise, arising from,
+ *   out of or in connection with the Software or the use or other dealings in the
+ *   Software.
  */
 
 #include "qrcode.h"
 
-#if LOCK_VERSION == 0
+#if (QRCODE_VERSION_CUSTOM)
+u8 g_QRCode_VersionMin = QRCODE_VERSION_MIN;
+u8 g_QRCode_VersionMax = QRCODE_VERSION_MAX;
+#define QRCODE_VERSION_CURRENT_MIN g_QRCode_VersionMin
+#define QRCODE_VERSION_CURRENT_MAX g_QRCode_VersionMax
+#else
+#define QRCODE_VERSION_CURRENT_MIN QRCODE_VERSION_MIN
+#define QRCODE_VERSION_CURRENT_MAX QRCODE_VERSION_MAX
+#endif
 
-static const u16 NUM_ERROR_CORRECTION_CODEWORDS[4][40] =
+#define LONG_MAX 2147483647L // 0x7FFFFFFF
+
+long labs(long a)
+{
+    return (a > 0) ? a : -a;
+}
+
+static u8 g_Buffer[1024];
+
+void *memmove(void *dst, const void *src, u16 num)
+{
+    u8       *tmp = g_Buffer;
+    const u8 *s = (const u8 *)src;
+    u8       *d = tmp;
+    for (u16 i = 0; i < num; i++)
     {
-        // 1,  2,  3,  4,  5,   6,   7,   8,   9,  10,  11,  12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,  24,   25,   26,   27,   28,   29,   30,   31,   32,   33,   34,   35,   36,   37,   38,   39,   40    Error correction level
-        {10, 16, 26, 36, 48, 64, 72, 88, 110, 130, 150, 176, 198, 216, 240, 280, 308, 338, 364, 416, 442, 476, 504, 560, 588, 644, 700, 728, 784, 812, 868, 924, 980, 1036, 1064, 1120, 1204, 1260, 1316, 1372},             // Medium
-        {7, 10, 15, 20, 26, 36, 40, 48, 60, 72, 80, 96, 104, 120, 132, 144, 168, 180, 196, 224, 224, 252, 270, 300, 312, 336, 360, 390, 420, 450, 480, 510, 540, 570, 570, 600, 630, 660, 720, 750},                         // Low
-        {17, 28, 44, 64, 88, 112, 130, 156, 192, 224, 264, 308, 352, 384, 432, 480, 532, 588, 650, 700, 750, 816, 900, 960, 1050, 1110, 1200, 1260, 1350, 1440, 1530, 1620, 1710, 1800, 1890, 1980, 2100, 2220, 2310, 2430}, // High
-        {13, 22, 36, 52, 72, 96, 108, 132, 160, 192, 224, 260, 288, 320, 360, 408, 448, 504, 546, 600, 644, 690, 750, 810, 870, 952, 1020, 1050, 1140, 1200, 1290, 1350, 1440, 1530, 1590, 1680, 1770, 1860, 1950, 2040},    // Quartile
-};
+        *d = *s;
+        s++;
+        d++;
+    }
 
-static const u8 NUM_ERROR_CORRECTION_BLOCKS[4][40] =
+    s = tmp;
+    d = (u8 *)dst;
+    for (u16 i = 0; i < num; i++)
+    {
+        *d = *s;
+        s++;
+        d++;
+    }
+    return dst;
+}
+
+/*---- Forward declarations for private functions ----*/
+
+// Regarding all public and private functions defined in this source file:
+// - They require all pointer/array arguments to be not null unless the array length is zero.
+// - They only read input scalar/array arguments, write to output pointer/array
+//   arguments, and return scalar values; they are "pure" functions.
+// - They don't read mutable global variables or write to any global variables.
+// - They don't perform I/O, read the clock, print to console, etc.
+// - They allocate a small and constant amount of stack memory.
+// - They don't allocate or free any memory on the heap.
+// - They don't recurse or mutually recurse. All the code
+//   could be inlined into the top-level public functions.
+// - They run in at most quadratic time with respect to input arguments.
+//   Most functions run in linear time, and some in constant time.
+//   There are no unbounded loops or non-obvious termination conditions.
+// - They are completely thread-safe if the caller does not give the
+//   same writable buffer to concurrent calls to these functions.
+
+void appendBitsToBuffer(u16 val, i16 numBits, u8 buffer[], i16 *bitLen);
+
+void addEccAndInterleave(u8 data[], i16 version, enum QRCODE_ECC ecl, u8 result[]);
+i16  getNumDataCodewords(i16 version, enum QRCODE_ECC ecl);
+i16  getNumRawDataModules(i16 ver);
+
+void reedSolomonComputeDivisor(i16 degree, u8 result[]);
+void reedSolomonComputeRemainder(const u8 data[], i16 dataLen, const u8 generator[], i16 degree, u8 result[]);
+u8   reedSolomonMultiply(u8 x, u8 y);
+
+void        initializeFunctionModules(i16 version, u8 qrcode[]);
+static void drawLightFunctionModules(u8 qrcode[], i16 version);
+static void drawFormatBits(enum QRCODE_ECC ecl, enum QRCODE_MASK mask, u8 qrcode[]);
+i16         getAlignmentPatternPositions(i16 version, u8 result[7]);
+static void fillRectangle(i16 left, i16 top, i16 width, i16 height, u8 qrcode[]);
+
+static void drawCodewords(const u8 data[], i16 dataLen, u8 qrcode[]);
+static void applyMask(const u8 functionModules[], u8 qrcode[], enum QRCODE_MASK mask);
+static long getPenaltyScore(const u8 qrcode[]);
+static i16  finderPenaltyCountPatterns(const i16 runHistory[7], i16 qrsize);
+static i16  finderPenaltyTerminateAndCount(bool currentRunColor, i16 currentRunLength, i16 runHistory[7], i16 qrsize);
+static void finderPenaltyAddHistory(i16 currentRunLength, i16 runHistory[7], i16 qrsize);
+
+bool        getModuleBounded(const u8 qrcode[], i16 x, i16 y);
+void        setModuleBounded(u8 qrcode[], i16 x, i16 y, bool isDark);
+void        setModuleUnbounded(u8 qrcode[], i16 x, i16 y, bool isDark);
+static bool getBit(i16 x, i16 i);
+
+i16        calcSegmentBitLength(enum QRCODE_MODE mode, u16 numChars);
+i16        getTotalBits(const struct QRCode_Segment segs[], u16 len, i16 version);
+static i16 numCharCountBits(enum QRCODE_MODE mode, i16 version);
+
+/*---- Private tables of constants ----*/
+
+// The set of all legal characters in alphanumeric mode, where each character
+// value maps to the index in the string. For checking text and encoding segments.
+static const char *ALPHANUMERIC_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+
+// Sentinel value for use in only some functions.
+#define LENGTH_OVERFLOW -1
+
+// For generating error correction codes.
+const i8 ECC_CODEWORDS_PER_BLOCK[4][41] =
     {
         // Version: (note that index 0 is for padding, and is set to an illegal value)
-        // 1, 2, 3, 4, 5, 6, 7, 8, 9,10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40    Error correction level
-        {1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49},     // Medium
-        {1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25},              // Low
-        {1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81}, // High
-        {1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68},  // Quartile
+        //0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40    Error correction level
+        {-1, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30},  // Low
+        {-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28}, // Medium
+        {-1, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30, 28, 30, 30, 30, 30, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30}, // Quartile
+        {-1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30}, // High
 };
 
-static const u16 NUM_RAW_DATA_MODULES[40] =
+#define QRCode_REED_SOLOMON_DEGREE_MAX 30 // Based on the table above
+
+// For generating error correction codes.
+const i8 NUM_ERROR_CORRECTION_BLOCKS[4][41] =
     {
-        //  1,   2,   3,   4,    5,    6,    7,    8,    9,   10,   11,   12,   13,   14,   15,   16,   17,
-        208, 359, 567, 807, 1079, 1383, 1568, 1936, 2336, 2768, 3232, 3728, 4256, 4651, 5243, 5867, 6523,
-        //   18,   19,   20,   21,    22,    23,    24,    25,   26,    27,     28,    29,    30,    31,
-        7211, 7931, 8683, 9252, 10068, 10916, 11796, 12708, 13652, 14628, 15371, 16411, 17483, 18587,
-        //    32,    33,    34,    35,    36,    37,    38,    39,    40
-        19723, 20891, 22091, 23008, 24272, 25568, 26896, 28256, 29648};
+        // Version: (note that index 0 is for padding, and is set to an illegal value)
+        //0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40    Error correction level
+        {-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25},              // Low
+        {-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49},     // Medium
+        {-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68},  // Quartile
+        {-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81}, // High
+};
 
-// @TODO: Put other LOCK_VERSIONS here
-#elif LOCK_VERSION == 3
+// For automatic mask pattern selection.
+static const i16 PENALTY_N1 = 3;
+static const i16 PENALTY_N2 = 3;
+static const i16 PENALTY_N3 = 40;
+static const i16 PENALTY_N4 = 10;
 
-static const s16 NUM_ERROR_CORRECTION_CODEWORDS[4] =
-    {
-        26, 15, 44, 36};
+/*---- High-level QR Code encoding functions ----*/
 
-static const s8 NUM_ERROR_CORRECTION_BLOCKS[4] =
-    {
-        1, 1, 2, 2};
-
-static const u16 NUM_RAW_DATA_MODULES = 567;
-
-#endif
-
-/*static int max(int a, int b) {
-    if (a > b) { return a; }
-    return b;
-}*/
-
-static s8 getAlphanumeric(char c)
+// Public function - see documentation comment in header file.
+bool QRCode_EncodeText(const char *text, u8 tempBuffer[], u8 qrcode[], enum QRCODE_ECC ecl, enum QRCODE_MASK mask, bool boostEcl)
 {
+    u16 textLen = (u16)strlen(text);
+    if (textLen == 0)
+        return QRCode_encodeSegmentsAdvanced(NULL, 0, ecl, mask, boostEcl, tempBuffer, qrcode);
+    u16 bufLen = (u16)QRCODE_BUFFER_LEN_FOR_VERSION(QRCODE_VERSION_CURRENT_MAX);
 
-    if (c >= '0' && c <= '9')
+    struct QRCode_Segment seg;
+    if (QRCode_isNumeric(text))
     {
-        return (c - '0');
+        if (QRCode_CalcSegmentBufferSize(QRCODE_MODE_NUMERIC, textLen) > bufLen)
+            goto fail;
+        QRCode_MakeNumeric(text, tempBuffer, &seg);
     }
-    if (c >= 'A' && c <= 'Z')
+    else if (QRCode_isAlphanumeric(text))
     {
-        return (c - 'A' + 10);
+        if (QRCode_CalcSegmentBufferSize(QRCODE_MODE_ALPHANUMERIC, textLen) > bufLen)
+            goto fail;
+        QRCode_MakeAlphanumeric(text, tempBuffer, &seg);
     }
+    else
+    {
+        if (textLen > bufLen)
+            goto fail;
+        for (u16 i = 0; i < textLen; i++)
+            tempBuffer[i] = (u8)text[i];
+        seg.mode = QRCODE_MODE_BYTE;
+        seg.bitLength = calcSegmentBitLength(seg.mode, textLen);
+        if (seg.bitLength == LENGTH_OVERFLOW)
+            goto fail;
+        seg.numChars = (i16)textLen;
+        seg.data = tempBuffer;
+    }
+    return QRCode_encodeSegmentsAdvanced(&seg, 1, ecl, mask, boostEcl, tempBuffer, qrcode);
 
-    switch (c)
-    {
-    case ' ':
-        return 36;
-    case '$':
-        return 37;
-    case '%':
-        return 38;
-    case '*':
-        return 39;
-    case '+':
-        return 40;
-    case '-':
-        return 41;
-    case '.':
-        return 42;
-    case '/':
-        return 43;
-    case ':':
-        return 44;
-    }
-
-    return -1;
+fail:
+    qrcode[0] = 0; // Set size to invalid value for safety
+    return FALSE;
 }
 
-static bool isAlphanumeric(const char *text, u16 length)
+#if (QRCODE_USE_EXTRA)
+// Public function - see documentation comment in header file.
+bool QRCode_EncodeBinary(u8 dataAndTemp[], u16 dataLen, u8 qrcode[], enum QRCODE_ECC ecl, enum QRCODE_MASK mask, bool boostEcl)
 {
-    while (length != 0)
+    struct QRCode_Segment seg;
+    seg.mode = QRCODE_MODE_BYTE;
+    seg.bitLength = calcSegmentBitLength(seg.mode, dataLen);
+    if (seg.bitLength == LENGTH_OVERFLOW)
     {
-        if (getAlphanumeric(text[--length]) == -1)
-        {
+        qrcode[0] = 0; // Set size to invalid value for safety
+        return FALSE;
+    }
+    seg.numChars = (i16)dataLen;
+    seg.data = dataAndTemp;
+    return QRCode_encodeSegmentsAdvanced(&seg, 1, ecl, mask, boostEcl, dataAndTemp, qrcode);
+}
+#endif
+
+// Appends the given number of low-order bits of the given value to the given byte-based
+// bit buffer, increasing the bit length. Requires 0 <= numBits <= 16 and val < 2^numBits.
+void appendBitsToBuffer(u16 val, i16 numBits, u8 buffer[], i16 *bitLen)
+{
+    assert(0 <= numBits && numBits <= 16 && (unsigned long)val >> numBits == 0);
+    for (i16 i = numBits - 1; i >= 0; i--, (*bitLen)++)
+        buffer[*bitLen >> 3] |= ((val >> i) & 1) << (7 - (*bitLen & 7));
+}
+
+/*---- Low-level QR Code encoding functions ----*/
+
+#if (QRCODE_USE_EXTRA)
+// Public function - see documentation comment in header file.
+bool QRCode_encodeSegments(const struct QRCode_Segment segs[], u16 len, enum QRCODE_ECC ecl, u8 tempBuffer[], u8 qrcode[])
+{
+    return QRCode_encodeSegmentsAdvanced(segs, len, ecl, QRCODE_MASK_AUTO, TRUE, tempBuffer, qrcode);
+}
+#endif
+
+// Public function - see documentation comment in header file.
+bool QRCode_encodeSegmentsAdvanced(const struct QRCode_Segment segs[], u16 len, enum QRCODE_ECC ecl, enum QRCODE_MASK mask, bool boostEcl, u8 tempBuffer[], u8 qrcode[])
+{
+    assert(segs != NULL || len == 0);
+    assert(QRCODE_VERSION_MIN <= QRCODE_VERSION_CURRENT_MIN && QRCODE_VERSION_CURRENT_MIN <= QRCODE_VERSION_CURRENT_MAX && QRCODE_VERSION_CURRENT_MAX <= QRCODE_VERSION_MAX);
+    assert(0 <= (i16)ecl && (i16)ecl <= 3 && -1 <= (i16)mask && (i16)mask <= 7);
+
+    // Find the minimal version number to use
+    i16 version, dataUsedBits;
+    for (version = QRCODE_VERSION_CURRENT_MIN;; version++)
+    {
+        i16 dataCapacityBits = getNumDataCodewords(version, ecl) * 8; // Number of data bits available
+        dataUsedBits = getTotalBits(segs, len, version);
+        if (dataUsedBits != LENGTH_OVERFLOW && dataUsedBits <= dataCapacityBits)
+            break; // This version number is found to be suitable
+        if (version >= QRCODE_VERSION_CURRENT_MAX)
+        {                  // All versions in the range could not fit the given data
+            qrcode[0] = 0; // Set size to invalid value for safety
             return FALSE;
         }
     }
-    return TRUE;
-}
+    assert(dataUsedBits != LENGTH_OVERFLOW);
 
-static bool isNumeric(const char *text, u16 length)
-{
-    while (length != 0)
+    // Increase the error correction level while the data still fits in the current version number
+    for (i16 i = (i16)QRCODE_ECC_MEDIUM; i <= (i16)QRCODE_ECC_HIGH; i++)
+    { // From low to high
+        if (boostEcl && dataUsedBits <= getNumDataCodewords(version, (enum QRCODE_ECC)i) * 8)
+            ecl = (enum QRCODE_ECC)i;
+    }
+
+    // Concatenate all segments to create the data bit string
+    memset(qrcode, 0, (u16)QRCODE_BUFFER_LEN_FOR_VERSION(version) * sizeof(qrcode[0]));
+    i16 bitLen = 0;
+    for (u16 i = 0; i < len; i++)
     {
-        char c = text[--length];
-        if (c < '0' || c > '9')
+        const struct QRCode_Segment *seg = &segs[i];
+        appendBitsToBuffer((u16)seg->mode, 4, qrcode, &bitLen);
+        appendBitsToBuffer((u16)seg->numChars, numCharCountBits(seg->mode, version), qrcode, &bitLen);
+        for (i16 j = 0; j < seg->bitLength; j++)
         {
-            return FALSE;
+            i16 bit = (seg->data[j >> 3] >> (7 - (j & 7))) & 1;
+            appendBitsToBuffer((u16)bit, 1, qrcode, &bitLen);
         }
     }
+    assert(bitLen == dataUsedBits);
+
+    // Add terminator and pad up to a byte if applicable
+    i16 dataCapacityBits = getNumDataCodewords(version, ecl) * 8;
+    assert(bitLen <= dataCapacityBits);
+    i16 terminatorBits = dataCapacityBits - bitLen;
+    if (terminatorBits > 4)
+        terminatorBits = 4;
+    appendBitsToBuffer(0, terminatorBits, qrcode, &bitLen);
+    appendBitsToBuffer(0, (8 - bitLen % 8) % 8, qrcode, &bitLen);
+    assert(bitLen % 8 == 0);
+
+    // Pad with alternating bytes until data capacity is reached
+    for (u8 padByte = 0xEC; bitLen < dataCapacityBits; padByte ^= 0xEC ^ 0x11)
+        appendBitsToBuffer(padByte, 8, qrcode, &bitLen);
+
+    // Compute ECC, draw modules
+    addEccAndInterleave(qrcode, version, ecl, tempBuffer);
+    initializeFunctionModules(version, qrcode);
+    drawCodewords(tempBuffer, getNumRawDataModules(version) / 8, qrcode);
+    drawLightFunctionModules(qrcode, version);
+    initializeFunctionModules(version, tempBuffer);
+
+    // Do masking
+    if (mask == QRCODE_MASK_AUTO)
+    { // Automatically choose best mask
+        long minPenalty = LONG_MAX;
+        for (i16 i = 0; i < 8; i++)
+        {
+            enum QRCODE_MASK msk = (enum QRCODE_MASK)i;
+            applyMask(tempBuffer, qrcode, msk);
+            drawFormatBits(ecl, msk, qrcode);
+            long penalty = getPenaltyScore(qrcode);
+            if (penalty < minPenalty)
+            {
+                mask = msk;
+                minPenalty = penalty;
+            }
+            applyMask(tempBuffer, qrcode, msk); // Undoes the mask due to XOR
+        }
+    }
+    assert(0 <= (i16)mask && (i16)mask <= 7);
+    applyMask(tempBuffer, qrcode, mask); // Apply the final choice of mask
+    drawFormatBits(ecl, mask, qrcode);   // Overwrite old format bits
     return TRUE;
 }
 
-// We store the following tightly packed (less 8) in modeInfo
-//               <=9  <=26  <= 40
-// NUMERIC      ( 10,   12,    14);
-// ALPHANUMERIC (  9,   11,    13);
-// BYTE         (  8,   16,    16);
-static char getModeBits(u8 version, u8 mode)
+/*---- Error correction code generation functions ----*/
+
+// Appends error correction bytes to each block of the given data array, then interleaves
+// bytes from the blocks and stores them in the result array. data[0 : dataLen] contains
+// the input data. data[dataLen : rawCodewords] is used as a temporary work area and will
+// be clobbered by this function. The final answer is stored in result[0 : rawCodewords].
+void addEccAndInterleave(u8 data[], i16 version, enum QRCODE_ECC ecl, u8 result[])
 {
-    // Note: We use 15 instead of 16; since 15 doesn't exist and we cannot store 16 (8 + 8) in 3 bits
-    // hex(int("".join(reversed([('00' + bin(x - 8)[2:])[-3:] for x in [10, 9, 8, 12, 11, 15, 14, 13, 15]])), 2))
-    unsigned int modeInfo = 0x7bbb80a;
+    // Calculate parameter numbers
+    assert(0 <= (i16)ecl && (i16)ecl < 4 && QRCODE_VERSION_MIN <= version && version <= QRCODE_VERSION_MAX);
+    i16 numBlocks = NUM_ERROR_CORRECTION_BLOCKS[(i16)ecl][version];
+    i16 blockEccLen = ECC_CODEWORDS_PER_BLOCK[(i16)ecl][version];
+    i16 rawCodewords = getNumRawDataModules(version) / 8;
+    i16 dataLen = getNumDataCodewords(version, ecl);
+    i16 numShortBlocks = numBlocks - rawCodewords % numBlocks;
+    i16 shortBlockDataLen = rawCodewords / numBlocks - blockEccLen;
 
-#if LOCK_VERSION == 0 || LOCK_VERSION > 9
-    if (version > 9)
+    // Split data into blocks, calculate ECC, and interleave
+    // (not concatenate) the bytes into a single sequence
+    u8 rsdiv[QRCode_REED_SOLOMON_DEGREE_MAX];
+    reedSolomonComputeDivisor(blockEccLen, rsdiv);
+    const u8 *dat = data;
+    for (i16 i = 0; i < numBlocks; i++)
     {
-        modeInfo >>= 9;
+        i16 datLen = shortBlockDataLen + (i < numShortBlocks ? 0 : 1);
+        u8 *ecc = &data[dataLen]; // Temporary storage
+        reedSolomonComputeRemainder(dat, datLen, rsdiv, blockEccLen, ecc);
+        for (i16 j = 0, k = i; j < datLen; j++, k += numBlocks)
+        { // Copy data
+            if (j == shortBlockDataLen)
+                k -= numShortBlocks;
+            result[k] = dat[j];
+        }
+        for (i16 j = 0, k = dataLen + i; j < blockEccLen; j++, k += numBlocks) // Copy ECC
+            result[k] = ecc[j];
+        dat += datLen;
     }
-#endif
+}
 
-#if LOCK_VERSION == 0 || LOCK_VERSION > 26
-    if (version > 26)
+// Returns the number of 8-bit codewords that can be used for storing data (not ECC),
+// for the given version number and error correction level. The result is in the range [9, 2956].
+i16 getNumDataCodewords(i16 version, enum QRCODE_ECC ecl)
+{
+    i16 v = version, e = (i16)ecl;
+    assert(0 <= e && e < 4);
+    return getNumRawDataModules(v) / 8 - ECC_CODEWORDS_PER_BLOCK[e][v] * NUM_ERROR_CORRECTION_BLOCKS[e][v];
+}
+
+// Returns the number of data bits that can be stored in a QR Code of the given version number, after
+// all function modules are excluded. This includes remainder bits, so it might not be a multiple of 8.
+// The result is in the range [208, 29648]. This could be implemented as a 40-entry lookup table.
+i16 getNumRawDataModules(i16 ver)
+{
+    assert(QRCODE_VERSION_MIN <= ver && ver <= QRCODE_VERSION_MAX);
+    i16 result = (16 * ver + 128) * ver + 64;
+    if (ver >= 2)
     {
-        modeInfo >>= 9;
+        i16 numAlign = ver / 7 + 2;
+        result -= (25 * numAlign - 10) * numAlign - 55;
+        if (ver >= 7)
+            result -= 36;
     }
-#endif
-
-    char result = 8 + ((modeInfo >> (3 * mode)) & 0x07);
-    if (result == 15)
-    {
-        result = 16;
-    }
-
+    assert(208 <= result && result <= 29648);
     return result;
 }
 
-typedef struct BitBucket
+/*---- Reed-Solomon ECC generator functions ----*/
+
+// Computes a Reed-Solomon ECC generator polynomial for the given degree, storing in result[0 : degree].
+// This could be implemented as a lookup table over all possible parameter values, instead of as an algorithm.
+void reedSolomonComputeDivisor(i16 degree, u8 result[])
 {
-    u32 bitOffsetOrWidth;
-    u16 capacityBytes;
-    u8 *data;
-} BitBucket;
+    assert(1 <= degree && degree <= QRCode_REED_SOLOMON_DEGREE_MAX);
+    // Polynomial coefficients are stored from highest to lowest power, excluding the leading term which is always 1.
+    // For example the polynomial x^3 + 255x^2 + 8x + 93 is stored as the uint8 array {255, 8, 93}.
+    memset(result, 0, (u16)degree * sizeof(result[0]));
+    result[degree - 1] = 1; // Start off with the monomial x^0
 
-static u16 bb_getGridSizeBytes(u8 size)
-{
-    return (((size * size) + 7) / 8);
-}
-
-static u16 bb_getBufferSizeBytes(u32 bits)
-{
-    return ((bits + 7) / 8);
-}
-
-static void bb_initBuffer(BitBucket *bitBuffer, u8 *data, int32_t capacityBytes)
-{
-    bitBuffer->bitOffsetOrWidth = 0;
-    bitBuffer->capacityBytes = capacityBytes;
-    bitBuffer->data = data;
-
-    memset(data, 0, bitBuffer->capacityBytes);
-}
-
-static void bb_initGrid(BitBucket *bitGrid, u8 *data, u8 size)
-{
-    bitGrid->bitOffsetOrWidth = size;
-    bitGrid->capacityBytes = bb_getGridSizeBytes(size);
-    bitGrid->data = data;
-
-    memset(data, 0, bitGrid->capacityBytes);
-}
-
-static void bb_appendBits(BitBucket *bitBuffer, u32 val, u8 length)
-{
-    u32 offset = bitBuffer->bitOffsetOrWidth;
-    for (s8 i = length - 1; i >= 0; i--, offset++)
+    // Compute the product polynomial (x - r^0) * (x - r^1) * (x - r^2) * ... * (x - r^{degree-1}),
+    // drop the highest monomial term which is always 1x^degree.
+    // Note that r = 0x02, which is a generator element of this field GF(2^8/0x11D).
+    u8 root = 1;
+    for (i16 i = 0; i < degree; i++)
     {
-        bitBuffer->data[offset >> 3] |= ((val >> i) & 1) << (7 - (offset & 7));
-    }
-    bitBuffer->bitOffsetOrWidth = offset;
-}
-
-static void bb_setBit(BitBucket *bitGrid, u8 x, u8 y, bool on)
-{
-    u32 offset = y * bitGrid->bitOffsetOrWidth + x;
-    u8  mask = 1 << (7 - (offset & 0x07));
-    if (on)
-    {
-        bitGrid->data[offset >> 3] |= mask;
-    }
-    else
-    {
-        bitGrid->data[offset >> 3] &= ~mask;
-    }
-}
-
-static void bb_invertBit(BitBucket *bitGrid, u8 x, u8 y, bool invert)
-{
-    u32  offset = y * bitGrid->bitOffsetOrWidth + x;
-    u8   mask = 1 << (7 - (offset & 0x07));
-    bool on = ((bitGrid->data[offset >> 3] & (1 << (7 - (offset & 0x07)))) != 0);
-    if (on ^ invert)
-    {
-        bitGrid->data[offset >> 3] |= mask;
-    }
-    else
-    {
-        bitGrid->data[offset >> 3] &= ~mask;
-    }
-}
-
-static bool bb_getBit(BitBucket *bitGrid, u8 x, u8 y)
-{
-    u32 offset = y * bitGrid->bitOffsetOrWidth + x;
-    return (bitGrid->data[offset >> 3] & (1 << (7 - (offset & 0x07)))) != 0;
-}
-
-// XORs the data modules in this QR Code with the given mask pattern. Due to XOR's mathematical
-// properties, calling applyMask(m) twice with the same value is equivalent to no change at all.
-// This means it is possible to apply a mask, undo it, and try another mask. Note that a final
-// well-formed QR Code symbol needs exactly one mask applied (not zero, not two, etc.).
-static void applyMask(BitBucket *modules, BitBucket *isFunction, u8 mask)
-{
-    u8 size = modules->bitOffsetOrWidth;
-
-    for (u8 y = 0; y < size; y++)
-    {
-        for (u8 x = 0; x < size; x++)
+        // Multiply the current product by (x - r^i)
+        for (i16 j = 0; j < degree; j++)
         {
-            if (bb_getBit(isFunction, x, y))
-            {
-                continue;
-            }
+            result[j] = reedSolomonMultiply(result[j], root);
+            if (j + 1 < degree)
+                result[j] ^= result[j + 1];
+        }
+        root = reedSolomonMultiply(root, 0x02);
+    }
+}
 
-            bool invert = 0;
-            switch (mask)
+// Computes the Reed-Solomon error correction codeword for the given data and divisor polynomials.
+// The remainder when data[0 : dataLen] is divided by divisor[0 : degree] is stored in result[0 : degree].
+// All polynomials are in big endian, and the generator has an implicit leading 1 term.
+void reedSolomonComputeRemainder(const u8 data[], i16 dataLen, const u8 generator[], i16 degree, u8 result[])
+{
+    assert(1 <= degree && degree <= QRCode_REED_SOLOMON_DEGREE_MAX);
+    memset(result, 0, (u16)degree * sizeof(result[0]));
+    for (i16 i = 0; i < dataLen; i++)
+    { // Polynomial division
+        u8 factor = data[i] ^ result[0];
+        memmove(&result[0], &result[1], (u16)(degree - 1) * sizeof(result[0]));
+        result[degree - 1] = 0;
+        for (i16 j = 0; j < degree; j++)
+            result[j] ^= reedSolomonMultiply(generator[j], factor);
+    }
+}
+
+#undef QRCode_REED_SOLOMON_DEGREE_MAX
+
+// Returns the product of the two given field elements modulo GF(2^8/0x11D).
+// All inputs are valid. This could be implemented as a 256*256 lookup table.
+u8 reedSolomonMultiply(u8 x, u8 y)
+{
+    // Russian peasant multiplication
+    u8 z = 0;
+    for (i16 i = 7; i >= 0; i--)
+    {
+        z = (u8)((z << 1) ^ ((z >> 7) * 0x11D));
+        z ^= ((y >> i) & 1) * x;
+    }
+    return z;
+}
+
+/*---- Drawing function modules ----*/
+
+// Clears the given QR Code grid with light modules for the given
+// version's size, then marks every function module as dark.
+void initializeFunctionModules(i16 version, u8 qrcode[])
+{
+    // Initialize QR Code
+    i16 qrsize = version * 4 + 17;
+    memset(qrcode, 0, (u16)((qrsize * qrsize + 7) / 8 + 1) * sizeof(qrcode[0]));
+    qrcode[0] = (u8)qrsize;
+
+    // Fill horizontal and vertical timing patterns
+    fillRectangle(6, 0, 1, qrsize, qrcode);
+    fillRectangle(0, 6, qrsize, 1, qrcode);
+
+    // Fill 3 finder patterns (all corners except bottom right) and format bits
+    fillRectangle(0, 0, 9, 9, qrcode);
+    fillRectangle(qrsize - 8, 0, 8, 9, qrcode);
+    fillRectangle(0, qrsize - 8, 9, 8, qrcode);
+
+    // Fill numerous alignment patterns
+    u8  alignPatPos[7];
+    i16 numAlign = getAlignmentPatternPositions(version, alignPatPos);
+    for (i16 i = 0; i < numAlign; i++)
+    {
+        for (i16 j = 0; j < numAlign; j++)
+        {
+            // Don't draw on the three finder corners
+            if (!((i == 0 && j == 0) || (i == 0 && j == numAlign - 1) || (i == numAlign - 1 && j == 0)))
+                fillRectangle(alignPatPos[i] - 2, alignPatPos[j] - 2, 5, 5, qrcode);
+        }
+    }
+
+    // Fill version blocks
+    if (version >= 7)
+    {
+        fillRectangle(qrsize - 11, 0, 3, 6, qrcode);
+        fillRectangle(0, qrsize - 11, 6, 3, qrcode);
+    }
+}
+
+// Draws light function modules and possibly some dark modules onto the given QR Code, without changing
+// non-function modules. This does not draw the format bits. This requires all function modules to be previously
+// marked dark (namely by initializeFunctionModules()), because this may skip redrawing dark function modules.
+static void drawLightFunctionModules(u8 qrcode[], i16 version)
+{
+    // Draw horizontal and vertical timing patterns
+    u8 qrsize = QRCode_GetSize(qrcode);
+    for (i16 i = 7; i < qrsize - 7; i += 2)
+    {
+        setModuleBounded(qrcode, 6, i, FALSE);
+        setModuleBounded(qrcode, i, 6, FALSE);
+    }
+
+    // Draw 3 finder patterns (all corners except bottom right; overwrites some timing modules)
+    for (i16 dy = -4; dy <= 4; dy++)
+    {
+        for (i16 dx = -4; dx <= 4; dx++)
+        {
+            i16 dist = abs(dx);
+            if (abs(dy) > dist)
+                dist = abs(dy);
+            if (dist == 2 || dist == 4)
+            {
+                setModuleUnbounded(qrcode, 3 + dx, 3 + dy, FALSE);
+                setModuleUnbounded(qrcode, qrsize - 4 + dx, 3 + dy, FALSE);
+                setModuleUnbounded(qrcode, 3 + dx, qrsize - 4 + dy, FALSE);
+            }
+        }
+    }
+
+    // Draw numerous alignment patterns
+    u8  alignPatPos[7];
+    i16 numAlign = getAlignmentPatternPositions(version, alignPatPos);
+    for (i16 i = 0; i < numAlign; i++)
+    {
+        for (i16 j = 0; j < numAlign; j++)
+        {
+            if ((i == 0 && j == 0) || (i == 0 && j == numAlign - 1) || (i == numAlign - 1 && j == 0))
+                continue; // Don't draw on the three finder corners
+            for (i16 dy = -1; dy <= 1; dy++)
+            {
+                for (i16 dx = -1; dx <= 1; dx++)
+                    setModuleBounded(qrcode, alignPatPos[i] + dx, alignPatPos[j] + dy, dx == 0 && dy == 0);
+            }
+        }
+    }
+
+    // Draw version blocks
+    if (version >= 7)
+    {
+        // Calculate error correction code and pack bits
+        i16 rem = version; // version is uint6, in the range [7, 40]
+        for (i16 i = 0; i < 12; i++)
+            rem = (rem << 1) ^ ((rem >> 11) * 0x1F25);
+        long bits = (long)version << 12 | rem; // uint18
+        assert(bits >> 18 == 0);
+
+        // Draw two copies
+        for (i16 i = 0; i < 6; i++)
+        {
+            for (i16 j = 0; j < 3; j++)
+            {
+                i16 k = qrsize - 11 + j;
+                setModuleBounded(qrcode, k, i, (bits & 1) != 0);
+                setModuleBounded(qrcode, i, k, (bits & 1) != 0);
+                bits >>= 1;
+            }
+        }
+    }
+}
+
+// Draws two copies of the format bits (with its own error correction code) based
+// on the given mask and error correction level. This always draws all modules of
+// the format bits, unlike drawLightFunctionModules() which might skip dark modules.
+static void drawFormatBits(enum QRCODE_ECC ecl, enum QRCODE_MASK mask, u8 qrcode[])
+{
+    // Calculate error correction code and pack bits
+    assert(0 <= (i16)mask && (i16)mask <= 7);
+    static const i16 table[] = {1, 0, 3, 2};
+    i16              data = table[(i16)ecl] << 3 | (i16)mask; // errCorrLvl is uint2, mask is uint3
+    i16              rem = data;
+    for (i16 i = 0; i < 10; i++)
+        rem = (rem << 1) ^ ((rem >> 9) * 0x537);
+    i16 bits = (data << 10 | rem) ^ 0x5412; // uint15
+    assert(bits >> 15 == 0);
+
+    // Draw first copy
+    for (i16 i = 0; i <= 5; i++)
+        setModuleBounded(qrcode, 8, i, getBit(bits, i));
+    setModuleBounded(qrcode, 8, 7, getBit(bits, 6));
+    setModuleBounded(qrcode, 8, 8, getBit(bits, 7));
+    setModuleBounded(qrcode, 7, 8, getBit(bits, 8));
+    for (i16 i = 9; i < 15; i++)
+        setModuleBounded(qrcode, 14 - i, 8, getBit(bits, i));
+
+    // Draw second copy
+    u8 qrsize = QRCode_GetSize(qrcode);
+    for (i16 i = 0; i < 8; i++)
+        setModuleBounded(qrcode, qrsize - 1 - i, 8, getBit(bits, i));
+    for (i16 i = 8; i < 15; i++)
+        setModuleBounded(qrcode, 8, qrsize - 15 + i, getBit(bits, i));
+    setModuleBounded(qrcode, 8, qrsize - 8, TRUE); // Always dark
+}
+
+// Calculates and stores an ascending list of positions of alignment patterns
+// for this version number, returning the length of the list (in the range [0,7]).
+// Each position is in the range [0,177), and are used on both the x and y axes.
+// This could be implemented as lookup table of 40 variable-length lists of unsigned bytes.
+i16 getAlignmentPatternPositions(i16 version, u8 result[7])
+{
+    if (version == 1)
+        return 0;
+    i16 numAlign = version / 7 + 2;
+    i16 step = (version == 32) ? 26 : (version * 4 + numAlign * 2 + 1) / (numAlign * 2 - 2) * 2;
+    for (i16 i = numAlign - 1, pos = version * 4 + 10; i >= 1; i--, pos -= step)
+        result[i] = (u8)pos;
+    result[0] = 6;
+    return numAlign;
+}
+
+// Sets every module in the range [left : left + width] * [top : top + height] to dark.
+static void fillRectangle(i16 left, i16 top, i16 width, i16 height, u8 qrcode[])
+{
+    for (i16 dy = 0; dy < height; dy++)
+    {
+        for (i16 dx = 0; dx < width; dx++)
+            setModuleBounded(qrcode, left + dx, top + dy, TRUE);
+    }
+}
+
+/*---- Drawing data modules and masking ----*/
+
+// Draws the raw codewords (including data and ECC) onto the given QR Code. This requires the initial state of
+// the QR Code to be dark at function modules and light at codeword modules (including unused remainder bits).
+static void drawCodewords(const u8 data[], i16 dataLen, u8 qrcode[])
+{
+    u8  qrsize = QRCode_GetSize(qrcode);
+    i16 i = 0; // Bit index into the data
+    // Do the funny zigzag scan
+    for (i16 right = qrsize - 1; right >= 1; right -= 2)
+    { // Index of right column in each column pair
+        if (right == 6)
+            right = 5;
+        for (i16 vert = 0; vert < qrsize; vert++)
+        { // Vertical counter
+            for (i16 j = 0; j < 2; j++)
+            {
+                i16  x = right - j; // Actual x coordinate
+                bool upward = ((right + 1) & 2) == 0;
+                i16  y = upward ? qrsize - 1 - vert : vert; // Actual y coordinate
+                if (!getModuleBounded(qrcode, x, y) && i < dataLen * 8)
+                {
+                    bool dark = getBit(data[i >> 3], 7 - (i & 7));
+                    setModuleBounded(qrcode, x, y, dark);
+                    i++;
+                }
+                // If this QR Code has any remainder bits (0 to 7), they were assigned as
+                // 0/FALSE/light by the constructor and are left unchanged by this method
+            }
+        }
+    }
+    assert(i == dataLen * 8);
+}
+
+// XORs the codeword modules in this QR Code with the given mask pattern
+// and given pattern of function modules. The codeword bits must be drawn
+// before masking. Due to the arithmetic of XOR, calling applyMask() with
+// the same mask value a second time will undo the mask. A final well-formed
+// QR Code needs exactly one (not zero, two, etc.) mask applied.
+static void applyMask(const u8 functionModules[], u8 qrcode[], enum QRCODE_MASK mask)
+{
+    assert(0 <= (i16)mask && (i16)mask <= 7); // Disallows QRCODE_MASK_AUTO
+    u8 qrsize = QRCode_GetSize(qrcode);
+    for (i16 y = 0; y < qrsize; y++)
+    {
+        for (i16 x = 0; x < qrsize; x++)
+        {
+            if (getModuleBounded(functionModules, x, y))
+                continue;
+            bool invert;
+            switch ((i16)mask)
             {
             case 0:
                 invert = (x + y) % 2 == 0;
@@ -305,692 +700,470 @@ static void applyMask(BitBucket *modules, BitBucket *isFunction, u8 mask)
             case 7:
                 invert = ((x + y) % 2 + x * y % 3) % 2 == 0;
                 break;
+            default:
+                assert(FALSE);
+                return;
             }
-            bb_invertBit(modules, x, y, invert);
+            bool val = getModuleBounded(qrcode, x, y);
+            setModuleBounded(qrcode, x, y, val ^ invert);
         }
     }
 }
 
-static void setFunctionModule(BitBucket *modules, BitBucket *isFunction, u8 x, u8 y, bool on)
-{
-    bb_setBit(modules, x, y, on);
-    bb_setBit(isFunction, x, y, TRUE);
-}
-
-// Draws a 9*9 finder pattern including the border separator, with the center module at (x, y).
-static void drawFinderPattern(BitBucket *modules, BitBucket *isFunction, u8 x, u8 y)
-{
-    u8 size = modules->bitOffsetOrWidth;
-
-    for (s8 i = -4; i <= 4; i++)
-    {
-        for (s8 j = -4; j <= 4; j++)
-        {
-            u8  dist = max(abs(i), abs(j)); // Chebyshev/infinity norm
-            s16 xx = x + j, yy = y + i;
-            if (0 <= xx && xx < size && 0 <= yy && yy < size)
-            {
-                setFunctionModule(modules, isFunction, xx, yy, dist != 2 && dist != 4);
-            }
-        }
-    }
-}
-
-// Draws a 5*5 alignment pattern, with the center module at (x, y).
-static void drawAlignmentPattern(BitBucket *modules, BitBucket *isFunction, u8 x, u8 y)
-{
-    for (s8 i = -2; i <= 2; i++)
-    {
-        for (s8 j = -2; j <= 2; j++)
-        {
-            setFunctionModule(modules, isFunction, x + j, y + i, max(abs(i), abs(j)) != 1);
-        }
-    }
-}
-
-// Draws two copies of the format bits (with its own error correction code)
-// based on the given mask and this object's error correction level field.
-static void drawFormatBits(BitBucket *modules, BitBucket *isFunction, u8 ecc, u8 mask)
-{
-
-    u8 size = modules->bitOffsetOrWidth;
-
-    // Calculate error correction code and pack bits
-    u32 data = ecc << 3 | mask; // errCorrLvl is uint2, mask is uint3
-    u32 rem = data;
-    for (u8 i = 0; i < 10; i++)
-    {
-        rem = (rem << 1) ^ ((rem >> 9) * 0x537);
-    }
-
-    data = data << 10 | rem;
-    data ^= 0x5412; // uint15
-
-    // Draw first copy
-    for (u8 i = 0; i <= 5; i++)
-    {
-        setFunctionModule(modules, isFunction, 8, i, ((data >> i) & 1) != 0);
-    }
-
-    setFunctionModule(modules, isFunction, 8, 7, ((data >> 6) & 1) != 0);
-    setFunctionModule(modules, isFunction, 8, 8, ((data >> 7) & 1) != 0);
-    setFunctionModule(modules, isFunction, 7, 8, ((data >> 8) & 1) != 0);
-
-    for (s8 i = 9; i < 15; i++)
-    {
-        setFunctionModule(modules, isFunction, 14 - i, 8, ((data >> i) & 1) != 0);
-    }
-
-    // Draw second copy
-    for (s8 i = 0; i <= 7; i++)
-    {
-        setFunctionModule(modules, isFunction, size - 1 - i, 8, ((data >> i) & 1) != 0);
-    }
-
-    for (s8 i = 8; i < 15; i++)
-    {
-        setFunctionModule(modules, isFunction, 8, size - 15 + i, ((data >> i) & 1) != 0);
-    }
-
-    setFunctionModule(modules, isFunction, 8, size - 8, TRUE);
-}
-
-// Draws two copies of the version bits (with its own error correction code),
-// based on this object's version field (which only has an effect for 7 <= version <= 40).
-static void drawVersion(BitBucket *modules, BitBucket *isFunction, u8 version)
-{
-
-    s8 size = modules->bitOffsetOrWidth;
-
-#if LOCK_VERSION != 0 && LOCK_VERSION < 7
-    return;
-
-#else
-    if (version < 7)
-    {
-        return;
-    }
-
-    // Calculate error correction code and pack bits
-    u32 rem = version; // version is uint6, in the range [7, 40]
-    for (u8 i = 0; i < 12; i++)
-    {
-        rem = (rem << 1) ^ ((rem >> 11) * 0x1F25);
-    }
-
-    u32 data = version << 12 | rem; // uint18
-
-    // Draw two copies
-    for (u8 i = 0; i < 18; i++)
-    {
-        bool bit = ((data >> i) & 1) != 0;
-        u8   a = size - 11 + i % 3, b = i / 3;
-        setFunctionModule(modules, isFunction, a, b, bit);
-        setFunctionModule(modules, isFunction, b, a, bit);
-    }
-
-#endif
-}
-
-static void drawFunctionPatterns(BitBucket *modules, BitBucket *isFunction, u8 version, u8 ecc)
-{
-
-    u8 size = modules->bitOffsetOrWidth;
-
-    // Draw the horizontal and vertical timing patterns
-    for (u8 i = 0; i < size; i++)
-    {
-        setFunctionModule(modules, isFunction, 6, i, i % 2 == 0);
-        setFunctionModule(modules, isFunction, i, 6, i % 2 == 0);
-    }
-
-    // Draw 3 finder patterns (all corners except bottom right; overwrites some timing modules)
-    drawFinderPattern(modules, isFunction, 3, 3);
-    drawFinderPattern(modules, isFunction, size - 4, 3);
-    drawFinderPattern(modules, isFunction, 3, size - 4);
-
-#if LOCK_VERSION == 0 || LOCK_VERSION > 1
-
-    if (version > 1)
-    {
-
-        // Draw the numerous alignment patterns
-
-        u8 alignCount = version / 7 + 2;
-        u8 step;
-        if (version != 32)
-        {
-            step = (version * 4 + alignCount * 2 + 1) / (2 * alignCount - 2) * 2; // ceil((size - 13) / (2*numAlign - 2)) * 2
-        }
-        else
-        { // C-C-C-Combo breaker!
-            step = 26;
-        }
-
-        u8 alignPositionIndex = alignCount - 1;
-        u8 alignPosition[alignCount];
-
-        alignPosition[0] = 6;
-
-        u8 size = version * 4 + 17;
-        for (u8 i = 0, pos = size - 7; i < alignCount - 1; i++, pos -= step)
-        {
-            alignPosition[alignPositionIndex--] = pos;
-        }
-
-        for (u8 i = 0; i < alignCount; i++)
-        {
-            for (u8 j = 0; j < alignCount; j++)
-            {
-                if ((i == 0 && j == 0) || (i == 0 && j == alignCount - 1) || (i == alignCount - 1 && j == 0))
-                {
-                    continue; // Skip the three finder corners
-                }
-                else
-                {
-                    drawAlignmentPattern(modules, isFunction, alignPosition[i], alignPosition[j]);
-                }
-            }
-        }
-    }
-
-#endif
-
-    // Draw configuration data
-    drawFormatBits(modules, isFunction, ecc, 0); // Dummy mask value; overwritten later in the constructor
-    drawVersion(modules, isFunction, version);
-}
-
-// Draws the given sequence of 8-bit codewords (data and error correction) onto the entire
-// data area of this QR Code symbol. Function modules need to be marked off before this is called.
-static void drawCodewords(BitBucket *modules, BitBucket *isFunction, BitBucket *codewords)
-{
-
-    u32 bitLength = codewords->bitOffsetOrWidth;
-    u8 *data = codewords->data;
-
-    u8 size = modules->bitOffsetOrWidth;
-
-    // Bit index into the data
-    u32 i = 0;
-
-    // Do the funny zigzag scan
-    for (s16 right = size - 1; right >= 1; right -= 2)
-    { // Index of right column in each column pair
-        if (right == 6)
-        {
-            right = 5;
-        }
-
-        for (u8 vert = 0; vert < size; vert++)
-        { // Vertical counter
-            for (int j = 0; j < 2; j++)
-            {
-                u8   x = right - j; // Actual x coordinate
-                bool upwards = ((right & 2) == 0) ^ (x < 6);
-                u8   y = upwards ? size - 1 - vert : vert; // Actual y coordinate
-                if (!bb_getBit(isFunction, x, y) && i < bitLength)
-                {
-                    bb_setBit(modules, x, y, ((data[i >> 3] >> (7 - (i & 7))) & 1) != 0);
-                    i++;
-                }
-                // If there are any remainder bits (0 to 7), they are already
-                // set to 0/false/white when the grid of modules was initialized
-            }
-        }
-    }
-}
-
-#define PENALTY_N1 3
-#define PENALTY_N2 3
-#define PENALTY_N3 40
-#define PENALTY_N4 10
-
-// Calculates and returns the penalty score based on state of this QR Code's current modules.
+// Calculates and returns the penalty score based on state of the given QR Code's current modules.
 // This is used by the automatic mask choice algorithm to find the mask pattern that yields the lowest score.
-// @TODO: This can be optimized by working with the bytes instead of bits.
-static u32 getPenaltyScore(BitBucket *modules)
+static long getPenaltyScore(const u8 qrcode[])
 {
-    u32 result = 0;
+    u8   qrsize = QRCode_GetSize(qrcode);
+    long result = 0;
 
-    u8 size = modules->bitOffsetOrWidth;
-
-    // Adjacent modules in row having same color
-    for (u8 y = 0; y < size; y++)
+    // Adjacent modules in row having same color, and finder-like patterns
+    for (i16 y = 0; y < qrsize; y++)
     {
-
-        bool colorX = bb_getBit(modules, 0, y);
-        for (u8 x = 1, runX = 1; x < size; x++)
+        bool runColor = FALSE;
+        i16  runX = 0;
+        i16  runHistory[7] = {0};
+        for (i16 x = 0; x < qrsize; x++)
         {
-            bool cx = bb_getBit(modules, x, y);
-            if (cx != colorX)
-            {
-                colorX = cx;
-                runX = 1;
-            }
-            else
+            if (getModuleBounded(qrcode, x, y) == runColor)
             {
                 runX++;
                 if (runX == 5)
-                {
                     result += PENALTY_N1;
-                }
                 else if (runX > 5)
-                {
                     result++;
-                }
-            }
-        }
-    }
-
-    // Adjacent modules in column having same color
-    for (u8 x = 0; x < size; x++)
-    {
-        bool colorY = bb_getBit(modules, x, 0);
-        for (u8 y = 1, runY = 1; y < size; y++)
-        {
-            bool cy = bb_getBit(modules, x, y);
-            if (cy != colorY)
-            {
-                colorY = cy;
-                runY = 1;
             }
             else
             {
+                finderPenaltyAddHistory(runX, runHistory, qrsize);
+                if (!runColor)
+                    result += finderPenaltyCountPatterns(runHistory, qrsize) * PENALTY_N3;
+                runColor = getModuleBounded(qrcode, x, y);
+                runX = 1;
+            }
+        }
+        result += finderPenaltyTerminateAndCount(runColor, runX, runHistory, qrsize) * PENALTY_N3;
+    }
+    // Adjacent modules in column having same color, and finder-like patterns
+    for (i16 x = 0; x < qrsize; x++)
+    {
+        bool runColor = FALSE;
+        i16  runY = 0;
+        i16  runHistory[7] = {0};
+        for (i16 y = 0; y < qrsize; y++)
+        {
+            if (getModuleBounded(qrcode, x, y) == runColor)
+            {
                 runY++;
                 if (runY == 5)
-                {
                     result += PENALTY_N1;
-                }
                 else if (runY > 5)
-                {
                     result++;
-                }
+            }
+            else
+            {
+                finderPenaltyAddHistory(runY, runHistory, qrsize);
+                if (!runColor)
+                    result += finderPenaltyCountPatterns(runHistory, qrsize) * PENALTY_N3;
+                runColor = getModuleBounded(qrcode, x, y);
+                runY = 1;
             }
         }
+        result += finderPenaltyTerminateAndCount(runColor, runY, runHistory, qrsize) * PENALTY_N3;
     }
 
-    u16 black = 0;
-    for (u8 y = 0; y < size; y++)
+    // 2*2 blocks of modules having same color
+    for (i16 y = 0; y < qrsize - 1; y++)
     {
-        u16 bitsRow = 0, bitsCol = 0;
-        for (u8 x = 0; x < size; x++)
+        for (i16 x = 0; x < qrsize - 1; x++)
         {
-            bool color = bb_getBit(modules, x, y);
-
-            // 2*2 blocks of modules having same color
-            if (x > 0 && y > 0)
-            {
-                bool colorUL = bb_getBit(modules, x - 1, y - 1);
-                bool colorUR = bb_getBit(modules, x, y - 1);
-                bool colorL = bb_getBit(modules, x - 1, y);
-                if (color == colorUL && color == colorUR && color == colorL)
-                {
-                    result += PENALTY_N2;
-                }
-            }
-
-            // Finder-like pattern in rows and columns
-            bitsRow = ((bitsRow << 1) & 0x7FF) | color;
-            bitsCol = ((bitsCol << 1) & 0x7FF) | bb_getBit(modules, y, x);
-
-            // Needs 11 bits accumulated
-            if (x >= 10)
-            {
-                if (bitsRow == 0x05D || bitsRow == 0x5D0)
-                {
-                    result += PENALTY_N3;
-                }
-                if (bitsCol == 0x05D || bitsCol == 0x5D0)
-                {
-                    result += PENALTY_N3;
-                }
-            }
-
-            // Balance of black and white modules
-            if (color)
-            {
-                black++;
-            }
+            bool color = getModuleBounded(qrcode, x, y);
+            if (color == getModuleBounded(qrcode, x + 1, y) &&
+                color == getModuleBounded(qrcode, x, y + 1) &&
+                color == getModuleBounded(qrcode, x + 1, y + 1))
+                result += PENALTY_N2;
         }
     }
 
-    // Find smallest k such that (45-5k)% <= dark/total <= (55+5k)%
-    u16 total = size * size;
-    for (u16 k = 0; black * 20 < (9 - k) * total || black * 20 > (11 + k) * total; k++)
+    // Balance of dark and light modules
+    i16 dark = 0;
+    for (i16 y = 0; y < qrsize; y++)
     {
-        result += PENALTY_N4;
+        for (i16 x = 0; x < qrsize; x++)
+        {
+            if (getModuleBounded(qrcode, x, y))
+                dark++;
+        }
     }
-
+    i16 total = qrsize * qrsize; // Note that size is odd, so dark/total != 1/2
+    // Compute the smallest integer k >= 0 such that (45-5k)% <= dark/total <= (55+5k)%
+    i16 k = (i16)((labs(dark * 20L - total * 10L) + total - 1) / total) - 1;
+    assert(0 <= k && k <= 9);
+    result += k * PENALTY_N4;
+    assert(0 <= result && result <= 2568888L); // Non-tight upper bound based on default values of PENALTY_N1, ..., N4
     return result;
 }
 
-static u8 rs_multiply(u8 x, u8 y)
+// Can only be called immediately after a light run is added, and
+// returns either 0, 1, or 2. A helper function for getPenaltyScore().
+static i16 finderPenaltyCountPatterns(const i16 runHistory[7], i16 qrsize)
 {
-    // Russian peasant multiplication
-    // See: https://en.wikipedia.org/wiki/Ancient_Egyptian_multiplication
-    u16 z = 0;
-    for (s8 i = 7; i >= 0; i--)
-    {
-        z = (z << 1) ^ ((z >> 7) * 0x11D);
-        z ^= ((y >> i) & 1) * x;
-    }
-    return z;
+    i16 n = runHistory[1];
+    assert(n <= qrsize * 3);
+    (void)qrsize;
+    bool core = n > 0 && runHistory[2] == n && runHistory[3] == n * 3 && runHistory[4] == n && runHistory[5] == n;
+    // The maximum QR Code size is 177, hence the dark run length n <= 177.
+    // Arithmetic is promoted to i16, so n*4 will not overflow.
+    return (core && runHistory[0] >= n * 4 && runHistory[6] >= n ? 1 : 0) + (core && runHistory[6] >= n * 4 && runHistory[0] >= n ? 1 : 0);
 }
 
-static void rs_init(u8 degree, u8 *coeff)
+// Must be called at the end of a line (row or column) of modules. A helper function for getPenaltyScore().
+static i16 finderPenaltyTerminateAndCount(bool currentRunColor, i16 currentRunLength, i16 runHistory[7], i16 qrsize)
 {
-    memset(coeff, 0, degree);
-    coeff[degree - 1] = 1;
-
-    // Compute the product polynomial (x - r^0) * (x - r^1) * (x - r^2) * ... * (x - r^{degree-1}),
-    // drop the highest term, and store the rest of the coefficients in order of descending powers.
-    // Note that r = 0x02, which is a generator element of this field GF(2^8/0x11D).
-    u16 root = 1;
-    for (u8 i = 0; i < degree; i++)
-    {
-        // Multiply the current product by (x - r^i)
-        for (u8 j = 0; j < degree; j++)
-        {
-            coeff[j] = rs_multiply(coeff[j], root);
-            if (j + 1 < degree)
-            {
-                coeff[j] ^= coeff[j + 1];
-            }
-        }
-        root = (root << 1) ^ ((root >> 7) * 0x11D); // Multiply by 0x02 mod GF(2^8/0x11D)
+    if (currentRunColor)
+    { // Terminate dark run
+        finderPenaltyAddHistory(currentRunLength, runHistory, qrsize);
+        currentRunLength = 0;
     }
+    currentRunLength += qrsize; // Add light border to final run
+    finderPenaltyAddHistory(currentRunLength, runHistory, qrsize);
+    return finderPenaltyCountPatterns(runHistory, qrsize);
 }
 
-static void rs_getRemainder(u8 degree, u8 *coeff, u8 *data, u8 length, u8 *result, u8 stride)
+// Pushes the given value to the front and drops the last value. A helper function for getPenaltyScore().
+static void finderPenaltyAddHistory(i16 currentRunLength, i16 runHistory[7], i16 qrsize)
 {
-    // Compute the remainder by performing polynomial division
-
-    //for (u8 i = 0; i < degree; i++) { result[] = 0; }
-    //memset(result, 0, degree);
-
-    for (u8 i = 0; i < length; i++)
-    {
-        u8 factor = data[i] ^ result[0];
-        for (u8 j = 1; j < degree; j++)
-        {
-            result[(j - 1) * stride] = result[j * stride];
-        }
-        result[(degree - 1) * stride] = 0;
-
-        for (u8 j = 0; j < degree; j++)
-        {
-            result[j * stride] ^= rs_multiply(coeff[j], factor);
-        }
-    }
+    if (runHistory[0] == 0)
+        currentRunLength += qrsize; // Add light border to initial run
+    memmove(&runHistory[1], &runHistory[0], 6 * sizeof(runHistory[0]));
+    runHistory[0] = currentRunLength;
 }
 
-static s8 encodeDataCodewords(BitBucket *dataCodewords, const u8 *text, u16 length, u8 version)
+/*---- Basic QR Code information ----*/
+
+// Public function - see documentation comment in header file.
+u8 QRCode_GetSize(const u8 qrcode[])
 {
-    s8 mode = MODE_BYTE;
+    assert(qrcode != NULL);
+    u8 result = qrcode[0];
+    assert((QRCODE_VERSION_MIN * 4 + 17) <= result && result <= (QRCODE_VERSION_MAX * 4 + 17));
+    return result;
+}
 
-    if (isNumeric((char *)text, length))
+// Public function - see documentation comment in header file.
+bool QRCode_GetModule(const u8 qrcode[], i16 x, i16 y)
+{
+    assert(qrcode != NULL);
+    i16 qrsize = qrcode[0];
+    return (0 <= x && x < qrsize && 0 <= y && y < qrsize) && getModuleBounded(qrcode, x, y);
+}
+
+// Returns the color of the module at the given coordinates, which must be in bounds.
+bool getModuleBounded(const u8 qrcode[], i16 x, i16 y)
+{
+    i16 qrsize = qrcode[0];
+    assert(21 <= qrsize && qrsize <= 177 && 0 <= x && x < qrsize && 0 <= y && y < qrsize);
+    i16 index = y * qrsize + x;
+    return getBit(qrcode[(index >> 3) + 1], index & 7);
+}
+
+// Sets the color of the module at the given coordinates, which must be in bounds.
+void setModuleBounded(u8 qrcode[], i16 x, i16 y, bool isDark)
+{
+    i16 qrsize = qrcode[0];
+    assert(21 <= qrsize && qrsize <= 177 && 0 <= x && x < qrsize && 0 <= y && y < qrsize);
+    i16 index = y * qrsize + x;
+    i16 bitIndex = index & 7;
+    i16 byteIndex = (index >> 3) + 1;
+    if (isDark)
+        qrcode[byteIndex] |= 1 << bitIndex;
+    else
+        qrcode[byteIndex] &= (1 << bitIndex) ^ 0xFF;
+}
+
+// Sets the color of the module at the given coordinates, doing nothing if out of bounds.
+void setModuleUnbounded(u8 qrcode[], i16 x, i16 y, bool isDark)
+{
+    i16 qrsize = qrcode[0];
+    if (0 <= x && x < qrsize && 0 <= y && y < qrsize)
+        setModuleBounded(qrcode, x, y, isDark);
+}
+
+//static const u16 g_Bits[16] =
+//{
+//	0b0000000000000001,
+//	0b0000000000000010,
+//	0b0000000000000100,
+//	0b0000000000001000,
+//	0b0000000000010000,
+//	0b0000000000100000,
+//	0b0000000001000000,
+//	0b0000000010000000,
+//	0b0000000100000000,
+//	0b0000001000000000,
+//	0b0000010000000000,
+//	0b0000100000000000,
+//	0b0001000000000000,
+//	0b0010000000000000,
+//	0b0100000000000000,
+//	0b1000000000000000,
+//};
+
+// Returns TRUE iff the i'th bit of x is set to 1. Requires x >= 0 and 0 <= i <= 14.
+static bool getBit(i16 x, i16 i)
+{
+    return ((x >> i) & 1) != 0;
+    //return (g_Bits[i] & x) != 0;
+}
+
+/*---- Segment handling ----*/
+
+// Public function - see documentation comment in header file.
+bool QRCode_isNumeric(const char *text)
+{
+    assert(text != NULL);
+    for (; *text != '\0'; text++)
     {
-        mode = MODE_NUMERIC;
-        bb_appendBits(dataCodewords, 1 << MODE_NUMERIC, 4);
-        bb_appendBits(dataCodewords, length, getModeBits(version, MODE_NUMERIC));
+        if (*text < '0' || *text > '9')
+            return FALSE;
+    }
+    return TRUE;
+}
 
-        u16 accumData = 0;
-        u8  accumCount = 0;
-        for (u16 i = 0; i < length; i++)
-        {
-            accumData = accumData * 10 + ((char)(text[i]) - '0');
-            accumCount++;
-            if (accumCount == 3)
-            {
-                bb_appendBits(dataCodewords, accumData, 10);
-                accumData = 0;
-                accumCount = 0;
-            }
-        }
+// Public function - see documentation comment in header file.
+bool QRCode_isAlphanumeric(const char *text)
+{
+    assert(text != NULL);
+    for (; *text != '\0'; text++)
+    {
+        if (strchr(ALPHANUMERIC_CHARSET, *text) == NULL)
+            return FALSE;
+    }
+    return TRUE;
+}
 
-        // 1 or 2 digits remaining
-        if (accumCount > 0)
+// Public function - see documentation comment in header file.
+u16 QRCode_CalcSegmentBufferSize(enum QRCODE_MODE mode, u16 numChars)
+{
+    i16 temp = calcSegmentBitLength(mode, numChars);
+    if (temp == LENGTH_OVERFLOW)
+        return 0xFFFF; // SIZE_MAX;
+    assert(0 <= temp && temp <= INT16_MAX);
+    return ((u16)temp + 7) / 8;
+}
+
+// Returns the number of data bits needed to represent a segment
+// containing the given number of characters using the given mode. Notes:
+// - Returns LENGTH_OVERFLOW on failure, i.e. numChars > INT16_MAX
+//   or the number of needed bits exceeds INT16_MAX (i.e. 32767).
+// - Otherwise, all valid results are in the range [0, INT16_MAX].
+// - For byte mode, numChars measures the number of bytes, not Unicode code points.
+// - For ECI mode, numChars must be 0, and the worst-case number of bits is returned.
+//   An actual ECI segment can have shorter data. For non-ECI modes, the result is exact.
+i16 calcSegmentBitLength(enum QRCODE_MODE mode, u16 numChars)
+{
+    // All calculations are designed to avoid overflow on all platforms
+    if (numChars > (u16)INT16_MAX)
+        return LENGTH_OVERFLOW;
+    long result = (long)numChars;
+    if (mode == QRCODE_MODE_NUMERIC)
+        result = (result * 10 + 2) / 3; // ceil(10/3 * n)
+    else if (mode == QRCODE_MODE_ALPHANUMERIC)
+        result = (result * 11 + 1) / 2; // ceil(11/2 * n)
+    else if (mode == QRCODE_MODE_BYTE)
+        result *= 8;
+    else if (mode == QRCODE_MODE_KANJI)
+        result *= 13;
+    else if (mode == QRCODE_MODE_ECI && numChars == 0)
+        result = 3 * 8;
+    else
+    { // Invalid argument
+        assert(FALSE);
+        return LENGTH_OVERFLOW;
+    }
+    assert(result >= 0);
+    if (result > INT16_MAX)
+        return LENGTH_OVERFLOW;
+    return (i16)result;
+}
+
+#if (QRCODE_USE_EXTRA)
+// Public function - see documentation comment in header file.
+void QRCode_MakeBytes(const u8 data[], u16 len, u8 buf[], struct QRCode_Segment *seg)
+{
+    assert(data != NULL || len == 0);
+    seg->mode = QRCODE_MODE_BYTE;
+    seg->bitLength = calcSegmentBitLength(seg->mode, len);
+    assert(seg->bitLength != LENGTH_OVERFLOW);
+    seg->numChars = (i16)len;
+    if (len > 0)
+        memcpy(buf, data, len * sizeof(buf[0]));
+    seg->data = buf;
+}
+#endif
+
+// Public function - see documentation comment in header file.
+void QRCode_MakeNumeric(const char *digits, u8 buf[], struct QRCode_Segment *seg)
+{
+    assert(digits != NULL);
+    u16 len = (u16)strlen(digits);
+    seg->mode = QRCODE_MODE_NUMERIC;
+    i16 bitLen = calcSegmentBitLength(seg->mode, len);
+    assert(bitLen != LENGTH_OVERFLOW);
+    seg->numChars = (i16)len;
+    if (bitLen > 0)
+        memset(buf, 0, ((u16)bitLen + 7) / 8 * sizeof(buf[0]));
+    seg->bitLength = 0;
+
+    u16 accumData = 0;
+    i16 accumCount = 0;
+    for (; *digits != '\0'; digits++)
+    {
+        char c = *digits;
+        assert('0' <= c && c <= '9');
+        accumData = accumData * 10 + (u16)(c - '0');
+        accumCount++;
+        if (accumCount == 3)
         {
-            bb_appendBits(dataCodewords, accumData, accumCount * 3 + 1);
+            appendBitsToBuffer(accumData, 10, buf, &seg->bitLength);
+            accumData = 0;
+            accumCount = 0;
         }
     }
-    else if (isAlphanumeric((char *)text, length))
+    if (accumCount > 0) // 1 or 2 digits remaining
+        appendBitsToBuffer(accumData, accumCount * 3 + 1, buf, &seg->bitLength);
+    assert(seg->bitLength == bitLen);
+    seg->data = buf;
+}
+
+// Public function - see documentation comment in header file.
+void QRCode_MakeAlphanumeric(const char *text, u8 buf[], struct QRCode_Segment *seg)
+{
+    assert(text != NULL);
+    u16 len = (u16)strlen(text);
+    seg->mode = QRCODE_MODE_ALPHANUMERIC;
+    i16 bitLen = calcSegmentBitLength(seg->mode, len);
+    assert(bitLen != LENGTH_OVERFLOW);
+    seg->numChars = (i16)len;
+    if (bitLen > 0)
+        memset(buf, 0, ((u16)bitLen + 7) / 8 * sizeof(buf[0]));
+    seg->bitLength = 0;
+
+    u16 accumData = 0;
+    i16 accumCount = 0;
+    for (; *text != '\0'; text++)
     {
-        mode = MODE_ALPHANUMERIC;
-        bb_appendBits(dataCodewords, 1 << MODE_ALPHANUMERIC, 4);
-        bb_appendBits(dataCodewords, length, getModeBits(version, MODE_ALPHANUMERIC));
-
-        u16 accumData = 0;
-        u8  accumCount = 0;
-        for (u16 i = 0; i < length; i++)
+        const char *temp = strchr(ALPHANUMERIC_CHARSET, *text);
+        assert(temp != NULL);
+        accumData = accumData * 45 + (u16)(temp - ALPHANUMERIC_CHARSET);
+        accumCount++;
+        if (accumCount == 2)
         {
-            accumData = accumData * 45 + getAlphanumeric((char)(text[i]));
-            accumCount++;
-            if (accumCount == 2)
-            {
-                bb_appendBits(dataCodewords, accumData, 11);
-                accumData = 0;
-                accumCount = 0;
-            }
+            appendBitsToBuffer(accumData, 11, buf, &seg->bitLength);
+            accumData = 0;
+            accumCount = 0;
         }
+    }
+    if (accumCount > 0) // 1 character remaining
+        appendBitsToBuffer(accumData, 6, buf, &seg->bitLength);
+    assert(seg->bitLength == bitLen);
+    seg->data = buf;
+}
 
-        // 1 character remaining
-        if (accumCount > 0)
-        {
-            bb_appendBits(dataCodewords, accumData, 6);
-        }
+#if (QRCODE_USE_EXTRA)
+// Public function - see documentation comment in header file.
+void QRCode_MakeECI(long assignVal, u8 buf[], struct QRCode_Segment *seg)
+{
+    seg->mode = QRCODE_MODE_ECI;
+    seg->numChars = 0;
+    seg->bitLength = 0;
+    if (assignVal < 0)
+        assert(FALSE);
+    else if (assignVal < (1 << 7))
+    {
+        memset(buf, 0, 1 * sizeof(buf[0]));
+        appendBitsToBuffer((u16)assignVal, 8, buf, &seg->bitLength);
+    }
+    else if (assignVal < (1 << 14))
+    {
+        memset(buf, 0, 2 * sizeof(buf[0]));
+        appendBitsToBuffer(2, 2, buf, &seg->bitLength);
+        appendBitsToBuffer((u16)assignVal, 14, buf, &seg->bitLength);
+    }
+    else if (assignVal < 1000000L)
+    {
+        memset(buf, 0, 3 * sizeof(buf[0]));
+        appendBitsToBuffer(6, 3, buf, &seg->bitLength);
+        appendBitsToBuffer((u16)(assignVal >> 10), 11, buf, &seg->bitLength);
+        appendBitsToBuffer((u16)(assignVal & 0x3FF), 10, buf, &seg->bitLength);
     }
     else
     {
-        bb_appendBits(dataCodewords, 1 << MODE_BYTE, 4);
-        bb_appendBits(dataCodewords, length, getModeBits(version, MODE_BYTE));
-        for (u16 i = 0; i < length; i++)
-        {
-            bb_appendBits(dataCodewords, (char)(text[i]), 8);
-        }
+        assert(FALSE);
     }
-
-    //bb_setBits(dataCodewords, length, 4, getModeBits(version, mode));
-
-    return mode;
+    seg->data = buf;
 }
-
-static void performErrorCorrection(u8 version, u8 ecc, BitBucket *data)
-{
-
-    // See: http://www.thonky.com/qr-code-tutorial/structure-final-message
-
-#if LOCK_VERSION == 0
-    u8  numBlocks = NUM_ERROR_CORRECTION_BLOCKS[ecc][version - 1];
-    u16 totalEcc = NUM_ERROR_CORRECTION_CODEWORDS[ecc][version - 1];
-    u16 moduleCount = NUM_RAW_DATA_MODULES[version - 1];
-#else
-    u8  numBlocks = NUM_ERROR_CORRECTION_BLOCKS[ecc];
-    u16 totalEcc = NUM_ERROR_CORRECTION_CODEWORDS[ecc];
-    u16 moduleCount = NUM_RAW_DATA_MODULES;
 #endif
 
-    u8 blockEccLen = totalEcc / numBlocks;
-    u8 numShortBlocks = numBlocks - moduleCount / 8 % numBlocks;
-    u8 shortBlockLen = moduleCount / 8 / numBlocks;
-
-    u8 shortDataBlockLen = shortBlockLen - blockEccLen;
-
-    u8 result[data->capacityBytes];
-    memset(result, 0, sizeof(result));
-
-    u8 coeff[blockEccLen];
-    rs_init(blockEccLen, coeff);
-
-    u16 offset = 0;
-    u8 *dataBytes = data->data;
-
-    // Interleave all short blocks
-    for (u8 i = 0; i < shortDataBlockLen; i++)
-    {
-        u16 index = i;
-        u8  stride = shortDataBlockLen;
-        for (u8 blockNum = 0; blockNum < numBlocks; blockNum++)
-        {
-            result[offset++] = dataBytes[index];
-
-#if LOCK_VERSION == 0 || LOCK_VERSION >= 5
-            if (blockNum == numShortBlocks)
-            {
-                stride++;
-            }
-#endif
-            index += stride;
-        }
-    }
-
-    // Version less than 5 only have short blocks
-#if LOCK_VERSION == 0 || LOCK_VERSION >= 5
-    {
-        // Interleave long blocks
-        u16 index = shortDataBlockLen * (numShortBlocks + 1);
-        u8  stride = shortDataBlockLen;
-        for (u8 blockNum = 0; blockNum < numBlocks - numShortBlocks; blockNum++)
-        {
-            result[offset++] = dataBytes[index];
-
-            if (blockNum == 0)
-            {
-                stride++;
-            }
-            index += stride;
-        }
-    }
-#endif
-
-    // Add all ecc blocks, interleaved
-    u8 blockSize = shortDataBlockLen;
-    for (u8 blockNum = 0; blockNum < numBlocks; blockNum++)
-    {
-
-#if LOCK_VERSION == 0 || LOCK_VERSION >= 5
-        if (blockNum == numShortBlocks)
-        {
-            blockSize++;
-        }
-#endif
-        rs_getRemainder(blockEccLen, coeff, dataBytes, blockSize, &result[offset + blockNum], numBlocks);
-        dataBytes += blockSize;
-    }
-
-    memcpy(data->data, result, data->capacityBytes);
-    data->bitOffsetOrWidth = moduleCount;
-}
-
-// We store the Format bits tightly packed into a single byte (each of the 4 modes is 2 bits)
-// The format bits can be determined by ECC_FORMAT_BITS >> (2 * ecc)
-static const u8 ECC_FORMAT_BITS = (0x02 << 6) | (0x03 << 4) | (0x00 << 2) | (0x01 << 0);
-
-u16 qrcode_getBufferSize(u8 version)
+// Calculates the number of bits needed to encode the given segments at the given version.
+// Returns a non-negative number if successful. Otherwise returns LENGTH_OVERFLOW if a segment
+// has too many characters to fit its length field, or the total bits exceeds INT16_MAX.
+i16 getTotalBits(const struct QRCode_Segment segs[], u16 len, i16 version)
 {
-    return bb_getGridSizeBytes(4 * version + 17);
+    assert(segs != NULL || len == 0);
+    long result = 0;
+    for (u16 i = 0; i < len; i++)
+    {
+        i16 numChars = segs[i].numChars;
+        i16 bitLength = segs[i].bitLength;
+        assert(0 <= numChars && numChars <= INT16_MAX);
+        assert(0 <= bitLength && bitLength <= INT16_MAX);
+        i16 ccbits = numCharCountBits(segs[i].mode, version);
+        assert(0 <= ccbits && ccbits <= 16);
+        if (numChars >= (1L << ccbits))
+            return LENGTH_OVERFLOW; // The segment's length doesn't fit the field's bit width
+        result += 4L + ccbits + bitLength;
+        if (result > INT16_MAX)
+            return LENGTH_OVERFLOW; // The sum might overflow an i16 type
+    }
+    assert(0 <= result && result <= INT16_MAX);
+    return (i16)result;
 }
 
-// @TODO: Return error if data is too big.
-s8 qrcode_initBytes(QRCode *qrcode, u8 *modules, u8 version, u8 ecc, u8 *data, u16 length)
+// Returns the bit width of the character count field for a segment in the given mode
+// in a QR Code at the given version number. The result is in the range [0, 16].
+static i16 numCharCountBits(enum QRCODE_MODE mode, i16 version)
 {
-    u8 size = version * 4 + 17;
-    qrcode->version = version;
-    qrcode->size = size;
-    qrcode->ecc = ecc;
-    qrcode->modules = modules;
-
-    u8 eccFormatBits = (ECC_FORMAT_BITS >> (2 * ecc)) & 0x03;
-
-#if LOCK_VERSION == 0
-    u16 moduleCount = NUM_RAW_DATA_MODULES[version - 1];
-    u16 dataCapacity = moduleCount / 8 - NUM_ERROR_CORRECTION_CODEWORDS[eccFormatBits][version - 1];
-#else
-    version = LOCK_VERSION;
-    u16 moduleCount = NUM_RAW_DATA_MODULES;
-    u16 dataCapacity = moduleCount / 8 - NUM_ERROR_CORRECTION_CODEWORDS[eccFormatBits];
-#endif
-
-    struct BitBucket codewords;
-    u8               codewordBytes[bb_getBufferSizeBytes(moduleCount)];
-    bb_initBuffer(&codewords, codewordBytes, (int32_t)sizeof(codewordBytes));
-
-    // Place the data code words into the buffer
-    s8 mode = encodeDataCodewords(&codewords, data, length, version);
-
-    if (mode < 0)
+    assert(QRCODE_VERSION_MIN <= version && version <= QRCODE_VERSION_MAX);
+    i16 i = (version + 7) / 17;
+    switch (mode)
     {
-        return -1;
-    }
-    qrcode->mode = mode;
-
-    // Add terminator and pad up to a byte if applicable
-    u32 padding = (dataCapacity * 8) - codewords.bitOffsetOrWidth;
-    if (padding > 4)
+    case QRCODE_MODE_NUMERIC:
     {
-        padding = 4;
+        static const i16 temp[] = {10, 12, 14};
+        return temp[i];
     }
-    bb_appendBits(&codewords, 0, padding);
-    bb_appendBits(&codewords, 0, (8 - codewords.bitOffsetOrWidth % 8) % 8);
-
-    // Pad with alternate bytes until data capacity is reached
-    for (u8 padByte = 0xEC; codewords.bitOffsetOrWidth < (dataCapacity * 8); padByte ^= 0xEC ^ 0x11)
+    case QRCODE_MODE_ALPHANUMERIC:
     {
-        bb_appendBits(&codewords, padByte, 8);
+        static const i16 temp[] = {9, 11, 13};
+        return temp[i];
     }
-
-    BitBucket modulesGrid;
-    bb_initGrid(&modulesGrid, modules, size);
-
-    BitBucket isFunctionGrid;
-    u8        isFunctionGridBytes[bb_getGridSizeBytes(size)];
-    bb_initGrid(&isFunctionGrid, isFunctionGridBytes, size);
-
-    // Draw function patterns, draw all codewords, do masking
-    drawFunctionPatterns(&modulesGrid, &isFunctionGrid, version, eccFormatBits);
-    performErrorCorrection(version, eccFormatBits, &codewords);
-    drawCodewords(&modulesGrid, &isFunctionGrid, &codewords);
-
-    // Find the best (lowest penalty) mask
-    u8  mask = 0;
-    s32 minPenalty = 0x7FFFFFFF;
-    for (u8 i = 0; i < 8; i++)
+    case QRCODE_MODE_BYTE:
     {
-        drawFormatBits(&modulesGrid, &isFunctionGrid, eccFormatBits, i);
-        applyMask(&modulesGrid, &isFunctionGrid, i);
-        int penalty = getPenaltyScore(&modulesGrid);
-        if (penalty < minPenalty)
-        {
-            mask = i;
-            minPenalty = penalty;
-        }
-        applyMask(&modulesGrid, &isFunctionGrid, i); // Undoes the mask due to XOR
+        static const i16 temp[] = {8, 16, 16};
+        return temp[i];
     }
-
-    qrcode->mask = mask;
-
-    // Overwrite old format bits
-    drawFormatBits(&modulesGrid, &isFunctionGrid, eccFormatBits, mask);
-
-    // Apply the final choice of mask
-    applyMask(&modulesGrid, &isFunctionGrid, mask);
-
-    return 0;
+    case QRCODE_MODE_KANJI:
+    {
+        static const i16 temp[] = {8, 10, 12};
+        return temp[i];
+    }
+    case QRCODE_MODE_ECI:
+        return 0;
+    default:
+        assert(FALSE);
+        return -1; // Dummy value
+    }
 }
 
-s8 qrcode_initText(QRCode *qrcode, u8 *modules, u8 version, u8 ecc, const char *data)
-{
-    return qrcode_initBytes(qrcode, modules, version, ecc, (u8 *)data, strlen(data));
-}
-
-bool qrcode_getModule(QRCode *qrcode, s32 x, s32 y)
-{
-    if (x < 0 || x >= qrcode->size || y < 0 || y >= qrcode->size)
-    {
-        return FALSE;
-    }
-
-    s32 offset = y * qrcode->size + x;
-    return (qrcode->modules[offset >> 3] & (1 << (7 - (offset & 0x07)))) != 0;
-}
+#undef LENGTH_OVERFLOW

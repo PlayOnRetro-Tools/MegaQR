@@ -8,26 +8,24 @@
 #define ACHIEVEMENT_END_GAME       bit(2)
 #define ACHIEVEMENT_NO_MISS        bit(31)
 
-#define QR_SCREEN_TILE_X 10
+#define QR_SCREEN_TILE_X 11
 #define QR_SCREEN_TILE_Y 4
 
 // Customize the screen for the QR code.
 //
-// The QR code gets rendered into the plane A using indexes 0 and 15 of the PAL0.
-// Colors are expected to be black and white for compatilibity with scanning devices.
-//
-// This sample uses SGDKs default palette for simplicity.
+// The QR code gets rendered into the plane A (128x128 pixels) with its own palette.
 //
 static void prepareScreen(void)
 {
     SYS_disableInts();
-
     SPR_reset();
     VDP_clearPlane(BG_A, 0);
     VDP_clearPlane(BG_B, 0);
-    VDP_drawText("GENERATING QR CODE", 11, 1);
-
+    VDP_setVerticalScroll(BG_A, 0);
+    VDP_setVerticalScroll(BG_B, 0);
+    VDP_setPlaneSize(64, 32, TRUE);
     SYS_enableInts();
+
     SYS_doVBlankProcess();
 }
 
@@ -47,7 +45,7 @@ int main(bool hard_reset)
     prepareScreen();
 
     // QR rendering needs to upload 16 tiles at the indicated vram index
-    qr_generate(&entry, QR_SCREEN_TILE_X, QR_SCREEN_TILE_Y, TILE_USER_INDEX);
+    qr_generate(&entry, QR_SCREEN_TILE_X, QR_SCREEN_TILE_Y, TILE_USER_INDEX, PAL1);
 
     while (TRUE)
     {
