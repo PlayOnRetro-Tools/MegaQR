@@ -4,14 +4,14 @@ This library enables QR code generation on Sega Mega Drive for leaderboard submi
 
 ## Features
 
-- Generates QR codes from `ScoreEntry` structs with score, achievements, device type, and game ID.
+- Generates QR codes from `ScoreEntry` structs with score, achievements, device type.
 - Renders QR codes directly to VDP plane A.
 
 ## Requirements
 
 - SGDK (Sega Genesis Development Kit) for compilation.
 - Include headers: `megaqr.h`.
-- Game ID from PlayOnRetro leaderboard service.
+- Game ID and private encryption key from PlayOnRetro leaderboard service.
 
 
 ## ScoreEntry Structure
@@ -24,16 +24,14 @@ Defines leaderboard entry data for QR encoding.
 | `score` | u32 | Actual game score. |
 | `achievementsUnlocked` | u32 | Bitflag for up to 32 achievements (use bit shifts like `1 << 0`). |
 | `device` | `Devicetype` | `DEVICE_TYPE_CART` (0) or `DEVICE_TYPE_ROM` (1). |
-| `game ID` | u8 | Unique game identifier from PlayOnRetro. |
-
-`Devicetype` enum: `DEVICE_TYPE_CART=0`, `DEVICE_TYPE_ROM=1`.
 
 ## Usage
 
-1. Define your game ID and achievements as bitflags.
-2. Populate an `ScoreEntry` struct.
-3. Invoke `qr_generate(&entry, tilex, tiley, vram_index, pal_index)` to serialize, encode, generate, and draw QR to plane A.
-4. Enter VBlank loop to display.
+1. Define your Achievements as bitflags.
+2. Declare your game configuration with the data provided by PlayOnRetro. 
+3. Populate an `ScoreEntry` struct.
+4. Invoke `qr_generate(&entry, tilex, tiley, vram_index, pal_index)` to serialize, encode, generate, and draw QR to plane A.
+5. Enter VBlank loop to display.
 
 ## Example
 
@@ -53,6 +51,12 @@ From `main.c` sample:
 
 #define QR_SCREEN_TILE_X 11
 #define QR_SCREEN_TILE_Y 4
+
+// Declare your game ID and private 16 byte key as 32 char hex string
+//
+// Provided by playonretro
+//
+QR_GAME_CONFIG(1, "000102030405060000102030405060");
 
 // Customize the screen for the QR code.
 //
@@ -79,8 +83,7 @@ int main(bool hard_reset)
 
     // Create a new hi-score entry
     ScoreEntry entry = {
-        .gameUIID = MEGA_QR_TEST_GAME_ID, // Game ID for testing, Actual ID will be provided by PlayOnRetro
-        .device = DEVICE_TYPE_ROM,        // Digital version of the game.
+        .device = DEVICE_TYPE_ROM, // Digital version of the game.
         .score = U32_MAX,
         .achievementsUnlocked = achievements,
     };
@@ -88,7 +91,7 @@ int main(bool hard_reset)
     prepareScreen();
 
     // QR rendering needs to upload 16 tiles at the indicated vram index
-    qr_generate(&entry, QR_SCREEN_TILE_X, QR_SCREEN_TILE_Y, TILE_USER_INDEX, PAL1);
+    qr_generate(&entry, QR_SCREEN_TILE_X, QR_SCREEN_TILE_Y, /* vram index = */ TILE_USER_INDEX, PAL1);
 
     while (TRUE)
     {

@@ -31,10 +31,10 @@ OBJS		+= $(addprefix build/out/, $(SRC_C:.c=.o))
 DEPS 		:= $(addprefix build/out/, $(SRC_C:.c=.d))
 
 INCS		:=  -I$(INCLUDE) -I$(SRC) -I$(INCLUDE_LIB) -I$(RES_LIB) -I$(RES)
-FLAGS 		:=  -m68000 -Wall -Wextra -Wno-shift-negative-value \
+FLAGS 		:=  -m68000 -Wall -Wextra -Wno-shift-negative-value -Wno-strict-aliasing \
 				-Wno-main -Wno-unused-parameter -fno-builtin -fms-extensions $(INCS) \
 				-fdiagnostics-color=always -ffunction-sections -fdata-sections \
-				-finline-small-functions -O3 -fuse-linker-plugin \
+				-finline-small-functions -O2 -fuse-linker-plugin \
 				-fno-web -fno-gcse -fno-unit-at-a-time -fomit-frame-pointer -flto -g
 AFLAGS  	:= -x assembler-with-cpp -Wa,--register-prefix-optional,--bitwise-or $(FLAGS)
 

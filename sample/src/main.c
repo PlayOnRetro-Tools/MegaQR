@@ -11,6 +11,12 @@
 #define QR_SCREEN_TILE_X 11
 #define QR_SCREEN_TILE_Y 4
 
+// Declare your game ID and private 16 byte key as 32 char hex string
+//
+// Provided by playonretro
+//
+QR_GAME_CONFIG(1, "000102030405060000102030405060");
+
 // Customize the screen for the QR code.
 //
 // The QR code gets rendered into the plane A (128x128 pixels) with its own palette.
@@ -36,8 +42,7 @@ int main(bool hard_reset)
 
     // Create a new hi-score entry
     ScoreEntry entry = {
-        .gameUIID = MEGA_QR_TEST_GAME_ID, // Game ID for testing, Actual ID will be provided by PlayOnRetro
-        .device = DEVICE_TYPE_ROM,        // Digital version of the game.
+        .device = DEVICE_TYPE_ROM, // Digital version of the game.
         .score = U32_MAX,
         .achievementsUnlocked = achievements,
     };
@@ -45,7 +50,7 @@ int main(bool hard_reset)
     prepareScreen();
 
     // QR rendering needs to upload 16 tiles at the indicated vram index
-    qr_generate(&entry, QR_SCREEN_TILE_X, QR_SCREEN_TILE_Y, TILE_USER_INDEX, PAL1);
+    qr_generate(&entry, QR_SCREEN_TILE_X, QR_SCREEN_TILE_Y, /* vram index = */ TILE_USER_INDEX, PAL1);
 
     while (TRUE)
     {
