@@ -45,4 +45,4 @@ typedef struct __attribute__((packed))
  * @param[in] index VRAM index for qr tile data (16 tiles needed).
  * @param[in] pal Palette index to use. The QR code uploads its own palette.
  */
-void qr_generate(ScoreEntry const *const entry, const u16 tilex, const u16 tiley, const u16 index, const u8 pal);
+void qr_generate(ScoreEntry * const entry, const u16 tilex, const u16 tiley, const u16 index, const u8 pal);

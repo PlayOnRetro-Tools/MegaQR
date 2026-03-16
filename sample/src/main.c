@@ -15,7 +15,7 @@
 //
 // Provided by playonretro
 //
-QR_GAME_CONFIG(1, "000102030405060000102030405060");
+QR_GAME_CONFIG(1, "1e67c3fcbfa32fe5dd73a7e8c0e7d9bb");
 
 // Customize the screen for the QR code.
 //

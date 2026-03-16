@@ -11,6 +11,7 @@ typedef struct __attribute__((packed))
 
 typedef struct __attribute__((packed))
 {
+    u8 version;
     u8 gameID;
     u8 iv[16];
     u8 payload[sizeof(ScorePayload)];
@@ -21,3 +22,6 @@ typedef struct __attribute__((packed))
 #define B64_STR_SIZE        128
 #define TEXT_BUFFER_SIZE    128
 #define QRCODE_BUFFER_SIZE  256
+
+// Current library version
+#define __MEGA_QR_VERSION__ 1
