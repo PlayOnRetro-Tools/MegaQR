@@ -1,24 +1,19 @@
 #include <megaqr.h>
 
-// Define a maximum of 32 achievements as a bitflag
-#define bit(i) (1 << i)
+// Define a maximum of 32 achievements
+#define ACHIEVEMENT_SAVED_PRINCESS ACHIEVEMENT_BIT(0)
+#define ACHIEVEMENT_KILLED_TAILS   ACHIEVEMENT_BIT(1)
+#define ACHIEVEMENT_END_GAME       ACHIEVEMENT_BIT(2)
+#define ACHIEVEMENT_NO_MISS        ACHIEVEMENT_BIT(31)
 
-#define ACHIEVEMENT_SAVED_PRINCESS bit(0)
-#define ACHIEVEMENT_KILLED_TAILS   bit(1)
-#define ACHIEVEMENT_END_GAME       bit(2)
-#define ACHIEVEMENT_NO_MISS        bit(31)
-
-#define QR_SCREEN_TILE_X 11
+#define QR_SCREEN_TILE_X ((320 / 2) - (128 / 2)) / 8
 #define QR_SCREEN_TILE_Y 4
 
 // Declare your game ID and private 16 byte key as 32 char hex string
 //
-// Provided by playonretro
+// Provided by playonretro to developers
 //
-// QR_GAME_CONFIG(1, "1e67c3fcbfa32fe5dd73a7e8c0e7d9bb");
-
-// For testing purposes
-QR_GAME_CONFIG(1, "606550e2c432dbd57ea9e9494cb73d6a");
+QR_GAME_CONFIG(12, "1e67c3fcbfa32fe5dd73a7e8c0e7d9bb");
 
 // Customize the screen for the QR code.
 //
@@ -40,20 +35,20 @@ static void prepareScreen(void)
 
 int main(bool hard_reset)
 {
-    // Set achievements as needed
+    // Set achievements
     const u32 achievements = (ACHIEVEMENT_KILLED_TAILS | ACHIEVEMENT_SAVED_PRINCESS);
 
     // Create a new hi-score entry
     ScoreEntry entry = {
         .device = DEVICE_TYPE_ROM, // Digital version of the game.
         .score = U32_MAX,
-        .achievementsUnlocked = achievements,
+        .achievements = achievements,
     };
 
     prepareScreen();
 
     // QR rendering needs to upload 16 tiles at the indicated vram index
-    qr_generate(&entry, QR_SCREEN_TILE_X, QR_SCREEN_TILE_Y, /* vram index = */ TILE_USER_INDEX, PAL1);
+    megaqr_generate(&entry, QR_SCREEN_TILE_X, QR_SCREEN_TILE_Y, /* vram index = */ TILE_USER_INDEX, PAL1);
 
     while (TRUE)
     {

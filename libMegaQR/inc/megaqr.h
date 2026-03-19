@@ -2,9 +2,11 @@
 
 #include <genesis.h>
 
+#define ACHIEVEMENT_BIT(i)  ((1 << i))
+
 typedef struct
 {
-    u8         gameID;
+    u16        gameID;
     const char key[33]; // 16 bytes = 32 hex chars + null
 } QRGameConfig;
 
@@ -25,7 +27,7 @@ typedef enum
 {
     DEVICE_TYPE_CART = 0, /**< Physical cartridge device. */
     DEVICE_TYPE_ROM,      /**< ROM/emulated device. */
-} Device_t;
+} Device;
 
 /**
  * @brief Packed score entry structure for QR submission.
@@ -33,8 +35,8 @@ typedef enum
 typedef struct __attribute__((packed))
 {
     u32 score;                /**< Actual game score. */
-    u32 achievementsUnlocked; /**< Achievements unlocked as a bitflag. */
-    u8  device;               /**< Device type (Device_t): cart or ROM. */
+    u32 achievements;         /**< Achievements unlocked as a bitflag. */
+    u8  device;               /**< Device type (Device): cart or ROM. */
 } ScoreEntry;
 
 /**
@@ -45,4 +47,4 @@ typedef struct __attribute__((packed))
  * @param[in] index VRAM index for qr tile data (16 tiles needed).
  * @param[in] pal Palette index to use. The QR code uploads its own palette.
  */
-void qr_generate(ScoreEntry * const entry, const u16 tilex, const u16 tiley, const u16 index, const u8 pal);
+void megaqr_generate(ScoreEntry const * const entry, const u16 tilex, const u16 tiley, const u16 index, const u8 pal);
