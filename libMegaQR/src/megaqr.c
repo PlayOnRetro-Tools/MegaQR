@@ -67,7 +67,9 @@ void megaqr_generate(ScoreEntry const *const entry, const u16 x, const u16 y, co
 
     // Generate request
     char request[BUFFER_SIZE];
-    concat_url_b64(request, BUFFER_SIZE, url, b64String);
+    char decoded_url[BUFFER_SIZE];
+    b64tobin(decoded_url, url);
+    concat_url_b64(request, BUFFER_SIZE, decoded_url, b64String);
 
     // Generate the QRCode
     u8 qrcode[BUFFER_SIZE * 2];
