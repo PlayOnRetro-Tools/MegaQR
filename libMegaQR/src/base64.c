@@ -93,7 +93,7 @@ void* b64tobin( void* dest, char const* src ) {
 static char const bintodigit[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                                  "abcdefghijklmnopqrstuvwxyz"
                                  "0123456789"
-                                 "+/";
+                                 "-_";
 
 /** Get the first base 64 digit of a block of 4.
   * @param a The first byte of the source block of 3.
