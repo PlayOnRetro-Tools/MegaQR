@@ -1,4 +1,4 @@
-#include "config.h"
+#include "megaqr_config.h"
 
 // Base64 encoded url endpoints
 

@@ -1,4 +1,4 @@
-#include "megaqr.h"
+#include "megaqr_config.h"
 #include "base64.h"
 #include "config.h"
 #include "hmac.h"
@@ -21,15 +21,15 @@ static void log_frame(QRframe const *const frame)
 {
     kprintf("frame size: %ld bytes", sizeof(QRframe));
 
-    char *iv = bytes_to_hex(frame->iv, GAME_KEY_SIZE);
+    char * const iv = bytes_to_hex(frame->iv, GAME_KEY_SIZE);
     kprintf("iv: %s", iv);
     free(iv);
 
-    char *hash = bytes_to_hex(frame->hash, SHA1_HASH_SIZE);
+    char * const hash = bytes_to_hex(frame->hash, SHA1_HASH_SIZE);
     kprintf("sha1: %s", hash);
     free(hash);
 
-    char *cipherhex = bytes_to_hex(frame->ciphertext, sizeof(QRPayload));
+    char * const cipherhex = bytes_to_hex(frame->ciphertext, sizeof(QRPayload));
     kprintf("ciphertext: %s", cipherhex);
     free(cipherhex);
 }

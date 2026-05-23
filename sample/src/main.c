@@ -13,7 +13,7 @@
 //
 // Provided by playonretro to developers
 //
-QR_GAME_CONFIG(12, "1e67c3fcbfa32fe5dd73a7e8c0e7d9bb");
+QR_GAME_CONFIG(2, "3a4dc8bf3949d8a3a8c2ffd2c436ad02");
 
 // Customize the screen for the QR code.
 //
@@ -36,7 +36,7 @@ static void prepareScreen(void)
 int main(bool hard_reset)
 {
     // Set achievements
-    const u32 achievements = (ACHIEVEMENT_KILLED_TAILS | ACHIEVEMENT_SAVED_PRINCESS);
+    const u32 achievements = (ACHIEVEMENT_KILLED_TAILS|ACHIEVEMENT_SAVED_PRINCESS|ACHIEVEMENT_NO_MISS);
 
     // Create a new hi-score entry
     ScoreEntry entry = {

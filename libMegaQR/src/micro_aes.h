@@ -21,17 +21,17 @@ AES block-cipher modes of operation. The following modes can be enabled/disabled
  by setting their corresponding macros to TRUE (1) or FALSE (0).
  -----------------------------------------------------------------------------*/
 #define BLOCKCIPHERS 1
-#define AEAD_MODES   1     /* authenticated encryption with associated data.  */
+#define AEAD_MODES   0     /* authenticated encryption with associated data.  */
 
 #if BLOCKCIPHERS
-#define ECB          1     /* electronic code-book (NIST SP 800-38A)          */
-#define CBC          1     /* cipher block chaining (NIST SP 800-38A)         */
-#define CFB          1     /* cipher feedback (NIST SP 800-38A)               */
-#define OFB          1     /* output feedback (NIST SP 800-38A)               */
+#define ECB          0     /* electronic code-book (NIST SP 800-38A)          */
+#define CBC          0     /* cipher block chaining (NIST SP 800-38A)         */
+#define CFB          0     /* cipher feedback (NIST SP 800-38A)               */
+#define OFB          0     /* output feedback (NIST SP 800-38A)               */
 #define CTR          1     /* counter-block (NIST SP 800-38A)                 */
-#define XEX          1     /* xor-encrypt-xor (NIST SP 800-38E)               */
-#define KWA          1     /* key wrap with authentication (NIST SP 800-38F)  */
-#define FPE          1     /* format-preserving encryption (NIST SP 800-38G)  */
+#define XEX          0     /* xor-encrypt-xor (NIST SP 800-38E)               */
+#define KWA          0     /* key wrap with authentication (NIST SP 800-38F)  */
+#define FPE          0     /* format-preserving encryption (NIST SP 800-38G)  */
 #endif
 
 #if AEAD_MODES
