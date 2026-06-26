@@ -13,7 +13,8 @@
 //
 // Provided by playonretro to developers
 //
-QR_GAME_CONFIG(2, "3a4dc8bf3949d8a3a8c2ffd2c436ad02");
+// Sample game config
+QR_GAME_CONFIG(6, "c9732823837497eaf3c39539fd0e62d8");
 
 // Customize the screen for the QR code.
 //
