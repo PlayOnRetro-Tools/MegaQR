@@ -22,6 +22,7 @@
  */
 
 #include "qrcode.h"
+#include "util.h"
 
 #if (QRCODE_VERSION_CUSTOM)
 u8 g_QRCode_VersionMin = QRCODE_VERSION_MIN;
@@ -936,7 +937,7 @@ bool QRCode_isAlphanumeric(const char *text)
     assert(text != NULL);
     for (; *text != '\0'; text++)
     {
-        if (strchr(ALPHANUMERIC_CHARSET, *text) == NULL)
+        if (util_strchr(ALPHANUMERIC_CHARSET, *text) == NULL)
             return FALSE;
     }
     return TRUE;
@@ -1053,7 +1054,7 @@ void QRCode_MakeAlphanumeric(const char *text, u8 buf[], struct QRCode_Segment *
     i16 accumCount = 0;
     for (; *text != '\0'; text++)
     {
-        const char *temp = strchr(ALPHANUMERIC_CHARSET, *text);
+        const char *temp = util_strchr(ALPHANUMERIC_CHARSET, *text);
         assert(temp != NULL);
         accumData = accumData * 45 + (u16)(temp - ALPHANUMERIC_CHARSET);
         accumCount++;

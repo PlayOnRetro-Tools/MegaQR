@@ -40,3 +40,20 @@ void concat_url_b64(char *buf, u32 buf_size, const char *url, const char *b64)
     memcpy(buf + url_len, (u8 *)b64, b64_len);
     buf[url_len + b64_len] = '\0';
 }
+
+char *util_strchr(const char *s, int c)
+{
+    unsigned char ch = (unsigned char)c;
+
+    while (*s != '\0') {
+        if ((unsigned char)*s == ch)
+            return (char *)s;
+        s++;
+    }
+
+    /* Check if searching for the null terminator itself */
+    if (ch == '\0')
+        return (char *)s;
+
+    return NULL;
+}

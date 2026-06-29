@@ -86,6 +86,7 @@ void* b64tobin( void* dest, char const* src ) {
         ++s;
     }
 
+    *p = '\0';
     return p;
 }
 
