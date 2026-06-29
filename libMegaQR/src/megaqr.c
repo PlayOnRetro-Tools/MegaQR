@@ -63,11 +63,15 @@ void megaqr_generate(ScoreEntry const *const entry, const u16 x, const u16 y, co
 
     // Base64 encode qrframe
     char b64String[BUFFER_SIZE];
+    memset(b64String, 0, BUFFER_SIZE);
     bintob64(b64String, (u8 *)&frame, sizeof(QRframe));
 
     // Generate request
     char request[BUFFER_SIZE];
     char decoded_url[BUFFER_SIZE];
+    memset(request, 0, BUFFER_SIZE);
+    memset(decoded_url, 0, BUFFER_SIZE);
+
     b64tobin(decoded_url, url);
     concat_url_b64(request, BUFFER_SIZE, decoded_url, b64String);
 
